@@ -1,0 +1,49 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="200dp"
+    android:height="200dp"
+    android:viewportWidth="400"
+    android:viewportHeight="300">
+
+  <path
+      android:fillColor="#E8F8F5"
+      android:pathData="M0,0 L400,0 L400,300 L0,300 Z"/>
+  <path
+      android:fillColor="#D1F2EB"
+      android:pathData="M0,230 L400,230 L400,300 L0,300 Z"/>
+  <path
+      android:fillColor="#FFFFFF"
+      android:pathData="M150,230 L250,230 L280,300 L120,300 Z"/>
+  <path
+      android:fillColor="#00B894"
+      android:pathData="M200,60 L270,85 L270,165 C270,205 200,235 200,235 C200,235 130,205 130,165 L130,85 Z"/>
+  <path
+      android:fillColor="#6C5CE7"
+      android:pathData="M200,75 L252,95 L252,158 C252,190 200,215 200,215 C200,215 148,190 148,158 L148,95 Z"/>
+  <path
+      android:fillColor="#1E2022"
+      android:pathData="M90,140 C90,120 105,110 120,115 C135,120 145,140 140,160 L135,240 L115,240 L118,180 L100,180 L98,240 L80,240 Z"/>
+  <path
+      android:fillColor="#1E2022"
+      android:pathData="M112,98m-14,0a14,14 0,1 1,28 0a14,14 0,1 1,-28 0"/>
+  <path
+      android:fillColor="#74B9FF"
+      android:pathData="M280,140 C280,120 295,110 310,115 C325,120 335,140 330,160 L325,240 L305,240 L308,180 L290,180 L288,240 L270,240 Z"/>
+  <path
+      android:fillColor="#74B9FF"
+      android:pathData="M302,98m-14,0a14,14 0,1 1,28 0a14,14 0,1 1,-28 0"/>
+  <path
+      android:strokeColor="#FFFFFF"
+      android:strokeWidth="12"
+      android:strokeLineCap="round"
+      android:strokeLineJoin="round"
+      android:fillColor="#00000000"
+      android:pathData="M175,145 L195,165 L230,125"/>
+  <path
+      android:fillColor="#FDCB6E"
+      android:pathData="M185,50 L215,50 C220,50 225,55 225,60 L225,80 C225,85 220,90 215,90 L185,90 C180,90 175,85 175,80 L175,60 C175,55 180,50 185,50 Z"/>
+  <path
+      android:strokeColor="#1E2022"
+      android:strokeWidth="4"
+      android:fillColor="#00000000"
+      android:pathData="M190,50 L190,40 C190,32 210,32 210,40 L210,50"/>
+</vector>
