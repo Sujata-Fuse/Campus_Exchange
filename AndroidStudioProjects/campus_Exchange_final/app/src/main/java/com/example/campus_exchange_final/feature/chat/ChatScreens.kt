@@ -1,6 +1,7 @@
 package com.example.campus_exchange_final.feature.chat
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -52,42 +53,6 @@ import com.example.campus_exchange_final.ui.theme.TealSurface
 import com.example.campus_exchange_final.ui.theme.TextPrimary
 import com.example.campus_exchange_final.ui.theme.TextSecondary
 
-val sampleConversations = listOf(
-    ChatConversation(
-        id = "conv_1",
-        participantName = "Rahul Verma",
-        participantRole = "Item Owner",
-        relatedItemTitle = "MacBook Air 13\"",
-        relatedItemSubtitle = "₹8,000 • Borrow & Lend",
-        workflowType = ChatWorkflowType.BORROW_LEND,
-        lastMessage = "Is the laptop still available for this weekend?",
-        timestamp = "10:42 AM",
-        unreadCount = 2
-    ),
-    ChatConversation(
-        id = "conv_2",
-        participantName = "Ananya Patel",
-        participantRole = "Finder",
-        relatedItemTitle = "Leather Wallet",
-        relatedItemSubtitle = "Lost Item Report • Main Canteen",
-        workflowType = ChatWorkflowType.LOST_FOUND,
-        lastMessage = "I found a brown wallet near table 4. Does it have your ID inside?",
-        timestamp = "Yesterday",
-        unreadCount = 0
-    )
-)
-
-val sampleMessages = mapOf(
-    "conv_1" to listOf(
-        ChatMessage("m1", "conv_1", "Rahul Verma", "Hi Priya, saw your request for the MacBook.", "10:35 AM", false),
-        ChatMessage("m2", "conv_1", "Priya Sharma", "Yes! I need it for a presentation on Friday.", "10:38 AM", true),
-        ChatMessage("m3", "conv_1", "Rahul Verma", "Is the laptop still available for this weekend?", "10:42 AM", false)
-    ),
-    "conv_2" to listOf(
-        ChatMessage("m4", "conv_2", "Ananya Patel", "I found a brown wallet near table 4. Does it have your ID inside?", "Yesterday", false)
-    )
-)
-
 // 1. Chat List Screen
 @Composable
 fun ChatListScreen(
@@ -116,16 +81,30 @@ fun ChatListScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            val displayConversations = if (chatViewModel.conversations.isNotEmpty()) chatViewModel.conversations else sampleConversations
+            val displayConversations = chatViewModel.conversations
 
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(displayConversations) { conv ->
-                    ChatConversationCard(
-                        conversation = conv,
-                        onClick = { onConversationClick(conv) }
+            if (displayConversations.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "No active chats",
+                        style = MaterialTheme.typography.bodyLarge.copy(color = TextSecondary)
                     )
+                }
+            } else {
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(displayConversations) { conv ->
+                        ChatConversationCard(
+                            conversation = conv,
+                            onClick = { onConversationClick(conv) }
+                        )
+                    }
                 }
             }
         }
@@ -145,21 +124,20 @@ fun ChatConversationCard(
         colors = CardDefaults.cardColors(containerColor = Color.White)
     ) {
         Row(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Participant Avatar
             Box(
                 modifier = Modifier
-                    .size(50.dp)
+                    .size(46.dp)
                     .clip(CircleShape)
-                    .background(if (conversation.workflowType == ChatWorkflowType.BORROW_LEND) PurpleSurface else TealSurface),
+                    .background(PurpleSurface),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = conversation.participantName.take(1),
+                    text = conversation.participantName.take(2).uppercase(),
                     style = MaterialTheme.typography.titleMedium.copy(
-                        color = if (conversation.workflowType == ChatWorkflowType.BORROW_LEND) BrandPurple else TealFound,
+                        color = BrandPurple,
                         fontWeight = FontWeight.Bold
                     )
                 )
@@ -182,22 +160,21 @@ fun ChatConversationCard(
                     )
                     Text(
                         text = conversation.timestamp,
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontSize = 11.sp,
-                            color = TextSecondary
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = TextSecondary,
+                            fontSize = 11.sp
                         )
                     )
                 }
 
                 Spacer(modifier = Modifier.height(2.dp))
 
-                // Related Item Context Badge
                 Text(
-                    text = "📦 ${conversation.relatedItemTitle}",
-                    style = MaterialTheme.typography.labelMedium.copy(
-                        fontSize = 12.sp,
+                    text = conversation.relatedItemTitle,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        color = BrandPurple,
                         fontWeight = FontWeight.SemiBold,
-                        color = if (conversation.workflowType == ChatWorkflowType.BORROW_LEND) BrandPurple else TealFound
+                        fontSize = 12.sp
                     )
                 )
 
@@ -206,8 +183,8 @@ fun ChatConversationCard(
                 Text(
                     text = conversation.lastMessage,
                     style = MaterialTheme.typography.bodyMedium.copy(
-                        fontSize = 13.sp,
-                        color = TextSecondary
+                        color = TextSecondary,
+                        fontSize = 13.sp
                     ),
                     maxLines = 1
                 )
@@ -225,7 +202,14 @@ fun ChatConversationScreen(
     chatViewModel: ChatViewModel = remember { ChatViewModel() }
 ) {
     var messageInput by remember { mutableStateOf("") }
-    val displayMessages = if (chatViewModel.messages.isNotEmpty()) chatViewModel.messages else (sampleMessages[conversation.id] ?: emptyList())
+    
+    androidx.compose.runtime.LaunchedEffect(conversation.id) {
+        if (conversation.id.isNotBlank()) {
+            chatViewModel.fetchMessages(conversation.id)
+        }
+    }
+
+    val displayMessages = chatViewModel.messages
 
     Box(
         modifier = modifier
@@ -268,41 +252,10 @@ fun ChatConversationScreen(
                                 )
                             )
                             Text(
-                                text = conversation.participantRole,
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontSize = 12.sp,
-                                    color = TextSecondary
-                                )
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Related Item Context Banner inside header
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(if (conversation.workflowType == ChatWorkflowType.BORROW_LEND) PurpleSurface else TealSurface)
-                            .padding(horizontal = 12.dp, vertical = 8.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Related Item: ",
-                                style = MaterialTheme.typography.labelMedium.copy(
-                                    fontSize = 12.sp,
-                                    color = TextSecondary
-                                )
-                            )
-                            Text(
-                                text = conversation.relatedItemTitle,
-                                style = MaterialTheme.typography.labelLarge.copy(
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (conversation.workflowType == ChatWorkflowType.BORROW_LEND) BrandPurple else TealFound
+                                text = "${conversation.participantRole} • ${conversation.relatedItemTitle}",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = TextSecondary,
+                                    fontSize = 12.sp
                                 )
                             )
                         }
@@ -310,7 +263,7 @@ fun ChatConversationScreen(
                 }
             }
 
-            // Message Bubbles List
+            // Messages List
             LazyColumn(
                 modifier = Modifier
                     .weight(1f)
@@ -336,7 +289,7 @@ fun ChatConversationScreen(
                     onValueChange = { messageInput = it },
                     placeholder = {
                         Text(
-                            text = "Type a message regarding item verification...",
+                            text = "Type a message...",
                             style = MaterialTheme.typography.bodyMedium.copy(color = TextSecondary)
                         )
                     },
@@ -397,6 +350,16 @@ fun MessageBubble(message: ChatMessage) {
                     )
                 )
                 .background(if (message.isMe) BrandPurple else Color.White)
+                .border(
+                    width = if (message.isMe) 0.dp else 1.dp,
+                    color = if (message.isMe) Color.Transparent else BorderLight,
+                    shape = RoundedCornerShape(
+                        topStart = 16.dp,
+                        topEnd = 16.dp,
+                        bottomStart = if (message.isMe) 16.dp else 4.dp,
+                        bottomEnd = if (message.isMe) 4.dp else 16.dp
+                    )
+                )
                 .padding(horizontal = 14.dp, vertical = 10.dp)
         ) {
             Text(
@@ -407,14 +370,12 @@ fun MessageBubble(message: ChatMessage) {
                 )
             )
         }
-
         Spacer(modifier = Modifier.height(2.dp))
-
         Text(
             text = message.timestamp,
-            style = MaterialTheme.typography.labelMedium.copy(
-                fontSize = 10.sp,
-                color = TextSecondary
+            style = MaterialTheme.typography.bodySmall.copy(
+                color = TextSecondary,
+                fontSize = 10.sp
             )
         )
     }

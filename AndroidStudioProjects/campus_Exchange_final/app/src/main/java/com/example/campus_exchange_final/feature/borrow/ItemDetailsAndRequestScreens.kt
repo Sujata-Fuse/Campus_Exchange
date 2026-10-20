@@ -27,6 +27,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -38,10 +39,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.campus_exchange_final.core.SupabaseProvider
 import com.example.campus_exchange_final.core.ui.CampusButton
 import com.example.campus_exchange_final.core.ui.CampusTextField
 import com.example.campus_exchange_final.core.ui.CampusTopBar
 import com.example.campus_exchange_final.feature.home.ItemListing
+import com.example.campus_exchange_final.feature.profile.UserProfile
 import com.example.campus_exchange_final.ui.theme.AppBackground
 import com.example.campus_exchange_final.ui.theme.BrandPurple
 import com.example.campus_exchange_final.ui.theme.PurpleSurface
@@ -49,6 +52,18 @@ import com.example.campus_exchange_final.ui.theme.TealFound
 import com.example.campus_exchange_final.ui.theme.TealSurface
 import com.example.campus_exchange_final.ui.theme.TextPrimary
 import com.example.campus_exchange_final.ui.theme.TextSecondary
+import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.postgrest.query.Columns
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+data class EnrichedBorrowRequest(
+    val entity: BorrowRequestEntity,
+    val requesterName: String = "Student",
+    val requesterCourse: String = "Student"
+)
 
 // Screen 12: Item Details
 @Composable
@@ -59,6 +74,114 @@ fun ItemDetailsScreen(
     onBackClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var ownerName by remember { mutableStateOf("Loading owner...") }
+    var ownerCourse by remember { mutableStateOf("Student") }
+    var isOwner by remember { mutableStateOf(false) }
+    var incomingRequests by remember { mutableStateOf<List<EnrichedBorrowRequest>>(emptyList()) }
+
+    LaunchedEffect(item.id, item.userId) {
+        val currentUserId = try {
+            SupabaseProvider.client.auth.currentUserOrNull()?.id
+        } catch (_: Exception) {
+            null
+        }
+        isOwner = currentUserId != null && currentUserId == item.userId
+
+        if (isOwner) {
+            try {
+                val reqs = withContext(Dispatchers.IO) {
+                    SupabaseProvider.client.from("borrow_requests")
+                        .select(Columns.list("*")) {
+                            filter { eq("item_id", item.id) }
+                        }
+                        .decodeList<BorrowRequestEntity>()
+                }
+                
+                val enriched = withContext(Dispatchers.IO) {
+                    reqs.map { req ->
+                        val profile = try {
+                            SupabaseProvider.client.from("public_profiles")
+                                .select(Columns.list("*")) {
+                                    filter { eq("id", req.requesterId) }
+                                }
+                                .decodeSingleOrNull<UserProfile>()
+                        } catch (_: Exception) { null }
+
+                        EnrichedBorrowRequest(
+                            entity = req,
+                            requesterName = profile?.full_name ?: "Campus Student",
+                            requesterCourse = profile?.course ?: "Student"
+                        )
+                    }
+                }
+                incomingRequests = enriched
+            } catch (_: Exception) {
+                incomingRequests = emptyList()
+            }
+        }
+
+        if (item.userId.isNotBlank()) {
+            try {
+                val profile = withContext(Dispatchers.IO) {
+                    SupabaseProvider.client.from("public_profiles")
+                        .select(Columns.list("*")) {
+                            filter { eq("id", item.userId) }
+                        }
+                        .decodeSingleOrNull<UserProfile>()
+                }
+                if (profile != null) {
+                    ownerName = profile.full_name
+                    ownerCourse = profile.course ?: "Student"
+                } else {
+                    ownerName = "Campus Student"
+                    ownerCourse = "Student"
+                }
+            } catch (_: Exception) {
+                ownerName = "Campus Student"
+                ownerCourse = "Student"
+            }
+        } else {
+            ownerName = "Campus Student"
+            ownerCourse = "Student"
+        }
+    }
+
+    fun updateRequestStatus(requestId: String, status: String) {
+        kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+            try {
+                SupabaseProvider.client.from("borrow_requests")
+                    .update(mapOf("status" to status)) {
+                        filter { eq("id", requestId) }
+                    }
+                val reqs = SupabaseProvider.client.from("borrow_requests")
+                    .select(Columns.list("*")) {
+                        filter { eq("item_id", item.id) }
+                    }
+                    .decodeList<BorrowRequestEntity>()
+
+                val enriched = reqs.map { req ->
+                    val profile = try {
+                        SupabaseProvider.client.from("public_profiles")
+                            .select(Columns.list("*")) {
+                                filter { eq("id", req.requesterId) }
+                            }
+                            .decodeSingleOrNull<UserProfile>()
+                    } catch (_: Exception) { null }
+
+                    EnrichedBorrowRequest(
+                        entity = req,
+                        requesterName = profile?.full_name ?: "Campus Student",
+                        requesterCourse = profile?.course ?: "Student"
+                    )
+                }
+
+                withContext(Dispatchers.Main) {
+                    incomingRequests = enriched
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -158,7 +281,7 @@ fun ItemDetailsScreen(
 
                         Column {
                             Text(
-                                text = "Priya Sharma",
+                                text = ownerName,
                                 style = MaterialTheme.typography.titleMedium.copy(
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 15.sp,
@@ -166,7 +289,7 @@ fun ItemDetailsScreen(
                                 )
                             )
                             Text(
-                                text = "Computer Science • 3rd Year",
+                                text = ownerCourse,
                                 style = MaterialTheme.typography.bodyMedium.copy(
                                     fontSize = 12.sp,
                                     color = TextSecondary
@@ -190,7 +313,7 @@ fun ItemDetailsScreen(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Text(
-                    text = "Lightly used MacBook Air 13\" M1. Perfect condition, clean display, includes original charger. Available for weekend borrowing.",
+                    text = item.description.ifBlank { "No description provided for this item." },
                     style = MaterialTheme.typography.bodyMedium.copy(
                         fontSize = 14.sp,
                         color = TextSecondary,
@@ -210,7 +333,7 @@ fun ItemDetailsScreen(
                             .padding(horizontal = 14.dp, vertical = 8.dp)
                     ) {
                         Text(
-                            text = "Condition: Good",
+                            text = "Condition: ${item.condition.ifBlank { "Good" }}",
                             style = MaterialTheme.typography.labelLarge.copy(
                                 color = BrandPurple,
                                 fontSize = 12.sp,
@@ -226,7 +349,7 @@ fun ItemDetailsScreen(
                             .padding(horizontal = 14.dp, vertical = 8.dp)
                     ) {
                         Text(
-                            text = "Location: Hostel 1",
+                            text = "Location: ${item.location}",
                             style = MaterialTheme.typography.labelLarge.copy(
                                 color = TealFound,
                                 fontSize = 12.sp,
@@ -238,31 +361,160 @@ fun ItemDetailsScreen(
 
                 Spacer(modifier = Modifier.height(28.dp))
 
-                CampusButton(
-                    text = "Request to Borrow",
-                    onClick = onRequestToBorrowClick
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                androidx.compose.material3.OutlinedButton(
-                    onClick = onChatWithOwnerClick,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp),
-                    shape = RoundedCornerShape(26.dp),
-                    colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
-                        contentColor = BrandPurple
-                    ),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, BrandPurple)
-                ) {
+                if (isOwner) {
                     Text(
-                        text = "Chat with Owner",
+                        text = "Owner Management Dashboard",
                         style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
                             fontSize = 16.sp,
-                            fontWeight = FontWeight.SemiBold
+                            color = BrandPurple
                         )
                     )
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    if (incomingRequests.isEmpty()) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White)
+                        ) {
+                            Box(modifier = Modifier.padding(16.dp)) {
+                                Text(
+                                    text = "No incoming borrow requests for this item yet.",
+                                    style = MaterialTheme.typography.bodyMedium.copy(color = TextSecondary)
+                                )
+                            }
+                        }
+                    } else {
+                        Column(
+                            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp)
+                        ) {
+                            incomingRequests.forEach { enriched ->
+                                val req = enriched.entity
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(14.dp),
+                                    colors = CardDefaults.cardColors(containerColor = Color.White)
+                                ) {
+                                    Column(modifier = Modifier.padding(14.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column {
+                                                Text(
+                                                    text = enriched.requesterName,
+                                                    style = MaterialTheme.typography.titleMedium.copy(
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 15.sp,
+                                                        color = TextPrimary
+                                                    )
+                                                )
+                                                Text(
+                                                    text = enriched.requesterCourse,
+                                                    style = MaterialTheme.typography.bodySmall.copy(
+                                                        color = TextSecondary,
+                                                        fontSize = 12.sp
+                                                    )
+                                                )
+                                            }
+
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .background(
+                                                        when (req.status) {
+                                                            "Accepted" -> TealSurface
+                                                            "Rejected" -> Color(0xFFFFEBEE)
+                                                            else -> PurpleSurface
+                                                        }
+                                                    )
+                                                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                                            ) {
+                                                Text(
+                                                    text = req.status,
+                                                    style = MaterialTheme.typography.labelMedium.copy(
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = when (req.status) {
+                                                            "Accepted" -> TealFound
+                                                            "Rejected" -> MaterialTheme.colorScheme.error
+                                                            else -> BrandPurple
+                                                        }
+                                                    )
+                                                )
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.height(8.dp))
+
+                                        Text(
+                                            text = "Requested Duration: ${req.duration}",
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                color = TextSecondary,
+                                                fontSize = 12.sp
+                                            )
+                                        )
+
+                                        Spacer(modifier = Modifier.height(4.dp))
+
+                                        Text(
+                                            text = req.message.ifBlank { "No message provided." },
+                                            style = MaterialTheme.typography.bodyMedium.copy(color = TextPrimary)
+                                        )
+
+                                        if (req.status == "Pending") {
+                                            Spacer(modifier = Modifier.height(10.dp))
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                androidx.compose.material3.Button(
+                                                    onClick = { updateRequestStatus(req.id, "Accepted") },
+                                                    modifier = Modifier.weight(1f)
+                                                ) {
+                                                    Text("Accept")
+                                                }
+                                                androidx.compose.material3.OutlinedButton(
+                                                    onClick = { updateRequestStatus(req.id, "Rejected") },
+                                                    modifier = Modifier.weight(1f)
+                                                ) {
+                                                    Text("Reject")
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    CampusButton(
+                        text = "Request to Borrow",
+                        onClick = onRequestToBorrowClick
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    androidx.compose.material3.OutlinedButton(
+                        onClick = onChatWithOwnerClick,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp),
+                        shape = RoundedCornerShape(26.dp),
+                        colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                            contentColor = BrandPurple
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, BrandPurple)
+                    ) {
+                        Text(
+                            text = "Chat with Owner",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        )
+                    }
                 }
             }
         }
@@ -388,6 +640,7 @@ fun RequestToBorrowScreen(
 
             CampusButton(
                 text = if (borrowViewModel.isLoading) "Sending Request..." else "Send Request",
+                enabled = !borrowViewModel.isLoading,
                 onClick = {
                     borrowViewModel.submitBorrowRequest(
                         itemId = item.id,

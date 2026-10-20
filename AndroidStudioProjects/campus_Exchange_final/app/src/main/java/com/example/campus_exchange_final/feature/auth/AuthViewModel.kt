@@ -43,6 +43,7 @@ class AuthViewModel : ViewModel() {
                 successMessage = "Registration successful! Please check your email for confirmation."
                 onsuccess()
             } catch (e: Exception) {
+                e.printStackTrace()
                 errorMessage = e.localizedMessage ?: "Registration failed."
             } finally {
                 isLoading = false
@@ -65,11 +66,19 @@ class AuthViewModel : ViewModel() {
                 }
                 onsuccess()
             } catch (e: Exception) {
+                e.printStackTrace()
                 val msg = e.localizedMessage ?: "Login failed."
-                errorMessage = if (msg.contains("not confirmed", ignoreCase = true)) {
-                    "Email not confirmed. Please check your inbox for the confirmation link."
-                } else {
-                    msg
+                errorMessage = when {
+                    msg.contains("not confirmed", ignoreCase = true) -> {
+                        "Email not confirmed. Please check your inbox for the confirmation link."
+                    }
+                    msg.contains("invalid_credentials", ignoreCase = true) || msg.contains("invalid login", ignoreCase = true) -> {
+                        "Invalid email or password. Please try again."
+                    }
+                    msg.contains("Socket closed", ignoreCase = true) || msg.contains("timeout", ignoreCase = true) || msg.contains("ConnectException", ignoreCase = true) -> {
+                        "Network request timed out. Please check your internet connection and try again."
+                    }
+                    else -> msg
                 }
             } finally {
                 isLoading = false
@@ -90,6 +99,7 @@ class AuthViewModel : ViewModel() {
                 successMessage = "Password reset link sent to your email."
                 onsuccess()
             } catch (e: Exception) {
+                e.printStackTrace()
                 errorMessage = e.localizedMessage ?: "Failed to send password reset link."
             } finally {
                 isLoading = false

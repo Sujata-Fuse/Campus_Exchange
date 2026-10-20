@@ -53,6 +53,7 @@ class ChatViewModel : ViewModel() {
             isLoading = true
             errorMessage = null
             try {
+                val currentUserId = SupabaseProvider.client.auth.currentUserOrNull()?.id ?: ""
                 val result = SupabaseProvider.client.from("messages")
                     .select(Columns.list("*")) {
                         filter {
@@ -60,7 +61,7 @@ class ChatViewModel : ViewModel() {
                         }
                     }
                     .decodeList<ChatMessage>()
-                messages = result
+                messages = result.map { it.copy(isMe = it.senderName == currentUserId) }
             } catch (e: Exception) {
                 errorMessage = e.localizedMessage ?: "Failed to load messages."
             } finally {
@@ -76,12 +77,12 @@ class ChatViewModel : ViewModel() {
             try {
                 val senderId = SupabaseProvider.client.auth.currentUserOrNull()?.id
                 if (senderId != null) {
-                    val msg = ChatMessage(
-                        conversationId = chatId,
-                        senderName = senderId,
-                        text = text
+                    val payload = mapOf(
+                        "chat_id" to chatId,
+                        "sender_id" to senderId,
+                        "text" to text
                     )
-                    SupabaseProvider.client.from("messages").insert(msg)
+                    SupabaseProvider.client.from("messages").insert(payload)
                     fetchMessages(chatId)
                     onsuccess()
                 }

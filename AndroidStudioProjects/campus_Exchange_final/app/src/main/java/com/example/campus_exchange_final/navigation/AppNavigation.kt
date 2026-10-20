@@ -14,6 +14,7 @@ import com.example.campus_exchange_final.core.SupabaseProvider
 import com.example.campus_exchange_final.core.ui.NavTab
 import com.example.campus_exchange_final.core.ui.SuccessConfirmationScreen
 import com.example.campus_exchange_final.feature.activity.ActivityScreen
+import com.example.campus_exchange_final.feature.activity.NotificationsScreen
 import com.example.campus_exchange_final.feature.auth.EmailVerificationScreen
 import com.example.campus_exchange_final.feature.auth.ForgotPasswordScreen
 import com.example.campus_exchange_final.feature.auth.LoginScreen
@@ -26,11 +27,11 @@ import com.example.campus_exchange_final.feature.borrow.RequestToBorrowScreen
 import com.example.campus_exchange_final.feature.chat.ChatConversation
 import com.example.campus_exchange_final.feature.chat.ChatConversationScreen
 import com.example.campus_exchange_final.feature.chat.ChatListScreen
-import com.example.campus_exchange_final.feature.chat.sampleConversations
 import com.example.campus_exchange_final.feature.home.HomeScreen
 import com.example.campus_exchange_final.feature.home.ItemListing
-import com.example.campus_exchange_final.feature.home.sampleListings
 import com.example.campus_exchange_final.feature.lostfound.LostFoundDashboardScreen
+import com.example.campus_exchange_final.feature.lostfound.LostFoundDetailsScreen
+import com.example.campus_exchange_final.feature.lostfound.LostFoundItem
 import com.example.campus_exchange_final.feature.lostfound.ReportItemScreen
 import com.example.campus_exchange_final.feature.profile.AboutScreen
 import com.example.campus_exchange_final.feature.profile.AccountSecurityScreen
@@ -42,6 +43,12 @@ import com.example.campus_exchange_final.feature.profile.SafetyReportingScreen
 import com.example.campus_exchange_final.feature.settings.PrivacyScreen
 import com.example.campus_exchange_final.feature.settings.SettingsScreen
 import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.postgrest.query.Columns
+import com.example.campus_exchange_final.feature.chat.ChatWorkflowType
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 enum class ScreenRoute {
     SPLASH,
@@ -54,6 +61,7 @@ enum class ScreenRoute {
     ITEM_DETAILS,
     REQUEST_TO_BORROW,
     LOST_FOUND,
+    LOST_FOUND_DETAILS,
     REPORT_LOST_ITEM,
     REPORT_FOUND_ITEM,
     ACTIVITY,
@@ -68,7 +76,8 @@ enum class ScreenRoute {
     PRIVACY,
     HELP_FAQ,
     ABOUT,
-    LEND_ITEM
+    LEND_ITEM,
+    NOTIFICATIONS
 }
 
 @Composable
@@ -76,8 +85,9 @@ fun CampusExchangeApp(modifier: Modifier = Modifier) {
     var screenStack by remember { mutableStateOf(listOf(ScreenRoute.SPLASH)) }
     val currentScreen = screenStack.lastOrNull() ?: ScreenRoute.SPLASH
 
-    var selectedItem by remember { mutableStateOf<ItemListing?>(sampleListings.first()) }
-    var activeConversation by remember { mutableStateOf<ChatConversation?>(sampleConversations.first()) }
+    var selectedItem by remember { mutableStateOf<ItemListing?>(null) }
+    var selectedLostItem by remember { mutableStateOf<LostFoundItem?>(null) }
+    var activeConversation by remember { mutableStateOf<ChatConversation?>(null) }
     var activeTab by remember { mutableStateOf(NavTab.HOME) }
 
     fun navigateTo(route: ScreenRoute) {
@@ -176,6 +186,7 @@ fun CampusExchangeApp(modifier: Modifier = Modifier) {
                 },
                 onBorrowBannerClick = { navigateTo(ScreenRoute.LEND_ITEM) },
                 onLostFoundBannerClick = { navigateTo(ScreenRoute.LOST_FOUND) },
+                onNotificationClick = { navigateTo(ScreenRoute.NOTIFICATIONS) },
                 selectedTab = activeTab,
                 onTabSelected = { tab ->
                     activeTab = tab
@@ -196,7 +207,70 @@ fun CampusExchangeApp(modifier: Modifier = Modifier) {
                 ItemDetailsScreen(
                     item = item,
                     onRequestToBorrowClick = { navigateTo(ScreenRoute.REQUEST_TO_BORROW) },
-                    onChatWithOwnerClick = { navigateTo(ScreenRoute.CHAT_CONVERSATION) },
+                    onChatWithOwnerClick = {
+                        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                            val currentUserId = SupabaseProvider.client.auth.currentUserOrNull()?.id ?: ""
+                            val ownerId = item.userId.ifBlank { currentUserId }
+                            try {
+                                val existing = SupabaseProvider.client.from("chats")
+                                    .select(io.github.jan.supabase.postgrest.query.Columns.list("*")) {
+                                        filter {
+                                            eq("item_id", item.id)
+                                        }
+                                    }
+                                    .decodeList<ChatConversation>()
+
+                                val chat = existing.firstOrNull { 
+                                    (it.participantOne == currentUserId && it.participantTwo == ownerId) ||
+                                    (it.participantOne == ownerId && it.participantTwo == currentUserId)
+                                } ?: existing.firstOrNull()
+
+                                val targetChat = if (chat != null) {
+                                    chat
+                                } else {
+                                    val newChat = ChatConversation(
+                                        itemId = item.id,
+                                        participantOne = currentUserId,
+                                        participantTwo = ownerId,
+                                        relatedItemTitle = item.title,
+                                        workflowType = ChatWorkflowType.BORROW_LEND,
+                                        lastMessage = "Chat started for ${item.title}"
+                                    )
+                                    val inserted = SupabaseProvider.client.from("chats").insert(newChat) {
+                                        select()
+                                    }.decodeSingle<ChatConversation>()
+                                    inserted
+                                }
+
+                                val ownerProfile = try {
+                                    SupabaseProvider.client.from("profiles")
+                                        .select(io.github.jan.supabase.postgrest.query.Columns.list("*")) {
+                                            filter { eq("id", ownerId) }
+                                        }
+                                        .decodeSingleOrNull<com.example.campus_exchange_final.feature.profile.UserProfile>()
+                                } catch (_: Exception) { null }
+
+                                val finalChat = targetChat.copy(
+                                    participantName = ownerProfile?.full_name ?: "Item Owner",
+                                    participantRole = ownerProfile?.course ?: "Student",
+                                    relatedItemTitle = item.title
+                                )
+
+                                activeConversation = finalChat
+                                navigateTo(ScreenRoute.CHAT_CONVERSATION)
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                                activeConversation = ChatConversation(
+                                    itemId = item.id,
+                                    participantName = "Item Owner",
+                                    relatedItemTitle = item.title,
+                                    participantOne = currentUserId,
+                                    participantTwo = ownerId
+                                )
+                                navigateTo(ScreenRoute.CHAT_CONVERSATION)
+                            }
+                        }
+                    },
                     onBackClick = { popBackStack() }
                 )
             }
@@ -216,7 +290,10 @@ fun CampusExchangeApp(modifier: Modifier = Modifier) {
             LostFoundDashboardScreen(
                 onReportLostClick = { navigateTo(ScreenRoute.REPORT_LOST_ITEM) },
                 onReportFoundClick = { navigateTo(ScreenRoute.REPORT_FOUND_ITEM) },
-                onItemClick = { /* item click */ },
+                onItemClick = { item ->
+                    selectedLostItem = item
+                    navigateTo(ScreenRoute.LOST_FOUND_DETAILS)
+                },
                 selectedTab = activeTab,
                 onTabSelected = { tab ->
                     activeTab = tab
@@ -229,6 +306,15 @@ fun CampusExchangeApp(modifier: Modifier = Modifier) {
                     }
                 }
             )
+        }
+
+        ScreenRoute.LOST_FOUND_DETAILS -> {
+            selectedLostItem?.let { item ->
+                LostFoundDetailsScreen(
+                    item = item,
+                    onBackClick = { popBackStack() }
+                )
+            }
         }
 
         ScreenRoute.REPORT_LOST_ITEM -> {
@@ -336,6 +422,12 @@ fun CampusExchangeApp(modifier: Modifier = Modifier) {
         ScreenRoute.LEND_ITEM -> {
             LendItemScreen(
                 onListSuccess = { navigateTo(ScreenRoute.SUCCESS_CONFIRMATION) },
+                onBackClick = { popBackStack() }
+            )
+        }
+
+        ScreenRoute.NOTIFICATIONS -> {
+            NotificationsScreen(
                 onBackClick = { popBackStack() }
             )
         }

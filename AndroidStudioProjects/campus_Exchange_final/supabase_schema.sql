@@ -58,8 +58,16 @@ create table if not exists public.borrow_requests (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- Safely add missing columns if borrow_requests already existed
-alter table public.borrow_requests add column if not exists duration text default '7 Days';
+-- FOUND REQUESTS TABLE
+create table if not exists public.found_requests (
+  id uuid default gen_random_uuid() primary key,
+  report_id uuid references public.lost_found_reports(id) on delete cascade not null,
+  requester_id uuid references public.profiles(id) on delete cascade not null,
+  owner_id uuid references public.profiles(id) on delete cascade not null,
+  status text default 'Pending',
+  message text default '',
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
 
 -- Safely attach constraints to borrow_requests
 do $$
@@ -73,6 +81,21 @@ begin
 exception
   when others then
     raise notice 'Notice: Some borrow_requests constraints could not be attached due to existing incompatible rows. Please review manually: %', sqlerrm;
+end;
+$$;
+
+-- Safely attach constraints to found_requests
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'check_different_found_users') then
+    alter table public.found_requests add constraint check_different_found_users check (requester_id <> owner_id);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'check_found_request_status') then
+    alter table public.found_requests add constraint check_found_request_status check (status in ('Pending', 'Accepted', 'Rejected'));
+  end if;
+exception
+  when others then
+    raise notice 'Notice: Some found_requests constraints could not be attached: %', sqlerrm;
 end;
 $$;
 
@@ -336,6 +359,31 @@ create policy "Allow requesters to insert borrow requests"
 drop policy if exists "Allow participants to update borrow requests" on public.borrow_requests;
 create policy "Allow participants to update borrow requests"
   on public.borrow_requests for update
+  to authenticated
+  using (auth.uid() = requester_id or auth.uid() = owner_id);
+
+-- FOUND REQUESTS RLS
+alter table public.found_requests enable row level security;
+
+drop policy if exists "Allow participants to read found requests" on public.found_requests;
+create policy "Allow participants to read found requests"
+  on public.found_requests for select
+  to authenticated
+  using (auth.uid() = requester_id or auth.uid() = owner_id);
+
+drop policy if exists "Allow requesters to insert found requests" on public.found_requests;
+create policy "Allow requesters to insert found requests"
+  on public.found_requests for insert
+  to authenticated
+  with check (
+    auth.uid() = requester_id
+    and requester_id <> owner_id
+    and owner_id = (select user_id from public.lost_found_reports where id = report_id)
+  );
+
+drop policy if exists "Allow participants to update found requests" on public.found_requests;
+create policy "Allow participants to update found requests"
+  on public.found_requests for update
   to authenticated
   using (auth.uid() = requester_id or auth.uid() = owner_id);
 

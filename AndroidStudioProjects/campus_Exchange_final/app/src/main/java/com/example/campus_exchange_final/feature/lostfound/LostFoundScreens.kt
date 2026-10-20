@@ -40,9 +40,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.campus_exchange_final.core.SupabaseProvider
 import com.example.campus_exchange_final.core.ui.CampusBottomNavBar
 import com.example.campus_exchange_final.core.ui.CampusButton
 import com.example.campus_exchange_final.core.ui.CampusTextField
+import com.example.campus_exchange_final.core.ui.CampusTopBar
 import com.example.campus_exchange_final.core.ui.NavTab
 import com.example.campus_exchange_final.feature.auth.BackgroundLogoWatermark
 import com.example.campus_exchange_final.ui.theme.AppBackground
@@ -54,29 +56,7 @@ import com.example.campus_exchange_final.ui.theme.TealFound
 import com.example.campus_exchange_final.ui.theme.TealSurface
 import com.example.campus_exchange_final.ui.theme.TextPrimary
 import com.example.campus_exchange_final.ui.theme.TextSecondary
-
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
-
-@Serializable
-data class LostFoundItem(
-    val id: String = "",
-    @SerialName("user_id") val userId: String = "",
-    val title: String,
-    @SerialName("is_lost") val isLost: Boolean,
-    val category: String,
-    val location: String,
-    val description: String = "",
-    val status: String = "Active",
-    val timeAgo: String = "1d ago"
-)
-
-val sampleLostFoundItems = listOf(
-    LostFoundItem(id = "1", title = "ID Card", isLost = true, category = "Documents", location = "Library • 2 days ago", timeAgo = "2d ago"),
-    LostFoundItem(id = "2", title = "Water Bottle", isLost = false, category = "Personal", location = "Hostel 1 • 1 day ago", timeAgo = "1d ago"),
-    LostFoundItem(id = "3", title = "Wallet", isLost = true, category = "Accessories", location = "Main Canteen • 3h ago", timeAgo = "3h ago"),
-    LostFoundItem(id = "4", title = "Earphones", isLost = false, category = "Electronics", location = "Sports Ground • 5h ago", timeAgo = "5h ago")
-)
+import io.github.jan.supabase.auth.auth
 
 // Screen 20: Lost & Found Dashboard
 @Composable
@@ -207,7 +187,7 @@ fun LostFoundDashboardScreen(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                val displayReports = if (lostFoundViewModel.reports.isNotEmpty()) lostFoundViewModel.reports else sampleLostFoundItems
+                val displayReports = lostFoundViewModel.reports
 
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -329,7 +309,7 @@ fun ReportItemScreen(
                 .padding(20.dp)
                 .verticalScroll(rememberScrollState())
         ) {
-            com.example.campus_exchange_final.core.ui.CampusTopBar(title = title, onBackClick = onBackClick)
+            CampusTopBar(title = title, onBackClick = onBackClick)
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -395,6 +375,193 @@ fun ReportItemScreen(
                 },
                 containerColor = color
             )
+        }
+    }
+}
+
+@Composable
+fun LostFoundDetailsScreen(
+    item: LostFoundItem,
+    onBackClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    lostFoundViewModel: LostFoundViewModel = remember { LostFoundViewModel() }
+) {
+    var message by remember { mutableStateOf("") }
+    var showDialog by remember { mutableStateOf(false) }
+
+    val currentUserId = remember {
+        try {
+            SupabaseProvider.client.auth.currentUserOrNull()?.id
+        } catch (_: Exception) {
+            null
+        }
+    }
+    val isOwner = currentUserId == item.userId
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(AppBackground)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(20.dp)
+                .verticalScroll(rememberScrollState())
+        ) {
+            CampusTopBar(title = "Item Details", onBackClick = onBackClick)
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White)
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = item.title,
+                            style = MaterialTheme.typography.headlineSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary
+                            )
+                        )
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (item.isLost) CoralSurface else TealSurface)
+                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = if (item.isLost) "Lost" else "Found",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    color = if (item.isLost) CoralLost else TealFound,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(text = "Category: ${item.category}", style = MaterialTheme.typography.bodyMedium.copy(color = TextSecondary))
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(text = "Location: ${item.location}", style = MaterialTheme.typography.bodyMedium.copy(color = TextSecondary))
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(text = "Description:", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = TextPrimary))
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(text = item.description.ifBlank { "No description provided." }, style = MaterialTheme.typography.bodyMedium.copy(color = TextSecondary))
+                }
+            }
+
+            if (lostFoundViewModel.errorMessage != null) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(text = lostFoundViewModel.errorMessage!!, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+            }
+            if (lostFoundViewModel.successMessage != null) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(text = lostFoundViewModel.successMessage!!, color = TealFound, fontWeight = FontWeight.Bold)
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            if (item.isLost && !isOwner) {
+                CampusButton(
+                    text = "I Found This",
+                    onClick = { showDialog = true },
+                    containerColor = TealFound
+                )
+            }
+
+            if (showDialog) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(text = "Send Found Notification", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                        Spacer(modifier = Modifier.height(8.dp))
+                        CampusTextField(
+                            value = message,
+                            onValueChange = { message = it },
+                            label = "Message to Owner",
+                            placeholder = "I found your item at..."
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            androidx.compose.material3.OutlinedButton(
+                                onClick = { showDialog = false },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Cancel")
+                            }
+                            CampusButton(
+                                text = "Submit",
+                                onClick = {
+                                    lostFoundViewModel.submitFoundRequest(
+                                        reportId = item.id,
+                                        ownerId = item.userId,
+                                        message = message
+                                    ) {
+                                        showDialog = false
+                                    }
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (isOwner) {
+                Spacer(modifier = Modifier.height(20.dp))
+                Text(text = "Found Requests Received", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                Spacer(modifier = Modifier.height(10.dp))
+                val relevantRequests = lostFoundViewModel.foundRequests.filter { it.reportId == item.id }
+                if (relevantRequests.isEmpty()) {
+                    Text(text = "No found requests yet.", color = TextSecondary)
+                } else {
+                    relevantRequests.forEach { req ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text(text = "Status: ${req.status}", fontWeight = FontWeight.Bold)
+                                Text(text = req.message.ifBlank { "Found claim" }, color = TextSecondary)
+                                if (req.status == "Pending") {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        androidx.compose.material3.Button(
+                                            onClick = {
+                                                lostFoundViewModel.updateFoundRequestStatus(req.id, "Accepted") {}
+                                            }
+                                        ) {
+                                            Text("Accept")
+                                        }
+                                        androidx.compose.material3.OutlinedButton(
+                                            onClick = {
+                                                lostFoundViewModel.updateFoundRequestStatus(req.id, "Rejected") {}
+                                            }
+                                        ) {
+                                            Text("Reject")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

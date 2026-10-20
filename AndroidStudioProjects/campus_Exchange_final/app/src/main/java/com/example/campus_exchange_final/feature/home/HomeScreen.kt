@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -36,6 +37,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -73,14 +75,9 @@ data class ItemListing(
     val location: String,
     @SerialName("image_url") val imageUrl: String = "",
     @SerialName("lending_type") val lendingType: String = "Free",
-    val duration: String = ""
-)
-
-val sampleListings = listOf(
-    ItemListing(id = "1", title = "MacBook Air 13\"", price = "₹8,000", category = "Electronics", location = "Hostel 1"),
-    ItemListing(id = "2", title = "Textbook An. Vol. 1", price = "₹200", category = "Books", location = "Library - Fl 2"),
-    ItemListing(id = "3", title = "Dell Laptop 15\"", price = "₹11,000", category = "Electronics", location = "Hostel 3"),
-    ItemListing(id = "4", title = "Scientific Calculator", price = "₹450", category = "Electronics", location = "Hostel 2")
+    val duration: String = "",
+    val description: String = "",
+    val condition: String = "Good"
 )
 
 val categories = listOf("All", "Books", "Electronics", "Fashion", "Furniture", "Notes", "Sports")
@@ -91,11 +88,15 @@ fun HomeScreen(
     onItemClick: (ItemListing) -> Unit,
     onBorrowBannerClick: () -> Unit,
     onLostFoundBannerClick: () -> Unit,
+    onNotificationClick: () -> Unit = {},
     selectedTab: NavTab = NavTab.HOME,
     onTabSelected: (NavTab) -> Unit = {},
     modifier: Modifier = Modifier,
     homeViewModel: HomeViewModel = remember { HomeViewModel() }
 ) {
+    LaunchedEffect(Unit) {
+        homeViewModel.fetchListings()
+    }
     val currentUser = remember {
         try {
             com.example.campus_exchange_final.core.SupabaseProvider.client.auth.currentUserOrNull()
@@ -136,7 +137,7 @@ fun HomeScreen(
     var searchQuery by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("All") }
 
-    val displayListings = if (homeViewModel.listings.isNotEmpty()) homeViewModel.listings else sampleListings
+    val displayListings = homeViewModel.listings
 
     val filteredListings = remember(searchQuery, selectedCategory, displayListings) {
         displayListings.filter { item ->
@@ -192,21 +193,42 @@ fun HomeScreen(
                         )
                     }
 
-                    // Avatar Circle
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(BrandPurple),
-                        contentAlignment = Alignment.Center
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Text(
-                            text = initials,
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold
+                        IconButton(
+                            onClick = onNotificationClick,
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(Color.White)
+                                .border(1.dp, BorderLight, CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Notifications,
+                                contentDescription = "Notifications",
+                                tint = BrandPurple,
+                                modifier = Modifier.size(20.dp)
                             )
-                        )
+                        }
+
+                        // Avatar Circle
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(BrandPurple),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = initials,
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            )
+                        }
                     }
                 }
 

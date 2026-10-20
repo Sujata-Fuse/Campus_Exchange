@@ -20,10 +20,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -44,19 +46,6 @@ import com.example.campus_exchange_final.ui.theme.TealFound
 import com.example.campus_exchange_final.ui.theme.TealSurface
 import com.example.campus_exchange_final.ui.theme.TextPrimary
 import com.example.campus_exchange_final.ui.theme.TextSecondary
-
-data class ActivityItem(
-    val id: String,
-    val title: String,
-    val subtitle: String,
-    val timeAgo: String
-)
-
-val sampleActivities = listOf(
-    ActivityItem("1", "Your request was accepted", "MacBook Air 13\" • 2h ago", "2h ago"),
-    ActivityItem("2", "New match found", "Wallet • 5h ago", "5h ago"),
-    ActivityItem("3", "Claim submitted", "ID Card • 1d ago", "1d ago")
-)
 
 // Screen 31: Activity Dashboard
 @Composable
@@ -118,55 +107,105 @@ fun ActivityScreen(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                val displayActivities = if (activityViewModel.activities.isNotEmpty()) activityViewModel.activities else sampleActivities
+                val displayActivities = activityViewModel.activities
 
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    items(displayActivities) { item ->
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onActivityClick(item) },
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.White)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(14.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                if (displayActivities.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "No recent activity",
+                            style = MaterialTheme.typography.bodyLarge.copy(color = TextSecondary)
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(displayActivities) { item ->
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onActivityClick(item) },
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color.White)
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(42.dp)
-                                        .clip(CircleShape)
-                                        .background(TealSurface),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.CheckCircle,
-                                        contentDescription = null,
-                                        tint = TealFound
-                                    )
-                                }
+                                Column(modifier = Modifier.padding(14.dp)) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(42.dp)
+                                                .clip(CircleShape)
+                                                .background(TealSurface),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.CheckCircle,
+                                                contentDescription = null,
+                                                tint = TealFound,
+                                                modifier = Modifier.size(22.dp)
+                                            )
+                                        }
 
-                                Spacer(modifier = Modifier.width(12.dp))
+                                        Spacer(modifier = Modifier.width(14.dp))
 
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = item.title,
-                                        style = MaterialTheme.typography.titleMedium.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 14.sp,
-                                            color = TextPrimary
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = item.title,
+                                                style = MaterialTheme.typography.titleMedium.copy(
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 14.sp,
+                                                    color = TextPrimary
+                                                )
+                                            )
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text(
+                                                text = item.subtitle,
+                                                style = MaterialTheme.typography.bodyMedium.copy(
+                                                    fontSize = 12.sp,
+                                                    color = TextSecondary
+                                                )
+                                            )
+                                        }
+
+                                        Text(
+                                            text = item.timeAgo,
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                color = TextSecondary,
+                                                fontSize = 11.sp
+                                            )
                                         )
-                                    )
-                                    Text(
-                                        text = item.subtitle,
-                                        style = MaterialTheme.typography.bodyMedium.copy(
-                                            fontSize = 12.sp,
-                                            color = TextSecondary
-                                        )
-                                    )
+                                    }
+
+                                    if (item.canAcceptReject && item.requestId.isNotBlank()) {
+                                        Spacer(modifier = Modifier.height(10.dp))
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Button(
+                                                onClick = {
+                                                    activityViewModel.updateBorrowRequest(item.requestId, "Accepted") {}
+                                                },
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Text("Accept")
+                                            }
+                                            OutlinedButton(
+                                                onClick = {
+                                                    activityViewModel.updateBorrowRequest(item.requestId, "Rejected") {}
+                                                },
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Text("Reject")
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -183,38 +222,38 @@ fun ActivityScreen(
 }
 
 @Composable
-private fun MetricCard(
-    count: String,
+fun MetricCard(
+    value: String,
     label: String,
-    bgColor: Color,
+    backgroundColor: Color,
     textColor: Color,
     modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = modifier.height(80.dp),
+        modifier = modifier.height(72.dp),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = bgColor)
+        colors = CardDefaults.cardColors(containerColor = backgroundColor)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = count,
-                style = MaterialTheme.typography.headlineMedium.copy(
+                text = value,
+                style = MaterialTheme.typography.titleLarge.copy(
                     fontWeight = FontWeight.Bold,
-                    fontSize = 22.sp,
+                    fontSize = 18.sp,
                     color = textColor
                 )
             )
             Text(
                 text = label,
-                style = MaterialTheme.typography.labelMedium.copy(
-                    fontSize = 11.sp,
-                    color = TextSecondary
+                style = MaterialTheme.typography.bodySmall.copy(
+                    color = TextSecondary,
+                    fontSize = 11.sp
                 )
             )
         }
