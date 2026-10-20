@@ -205,6 +205,50 @@ class LostFoundViewModel : ViewModel() {
         }
     }
 
+    fun deleteReport(
+        reportId: String,
+        onsuccess: () -> Unit
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            withContext(Dispatchers.Main) {
+                isLoading = true
+                errorMessage = null
+            }
+            try {
+                val userId = SupabaseProvider.client.auth.currentUserOrNull()?.id
+                if (userId.isNullOrBlank()) {
+                    withContext(Dispatchers.Main) {
+                        errorMessage = "User not authenticated. Please log in first."
+                    }
+                    return@launch
+                }
+
+                // Delete the report from lost_found_reports table
+                SupabaseProvider.client.from("lost_found_reports").delete {
+                    filter {
+                        eq("id", reportId)
+                        eq("user_id", userId)
+                    }
+                }
+
+                fetchReports()
+                withContext(Dispatchers.Main) {
+                    successMessage = "Report deleted successfully!"
+                    onsuccess()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    errorMessage = e.localizedMessage ?: "Failed to delete report from database."
+                }
+            } finally {
+                withContext(Dispatchers.Main) {
+                    isLoading = false
+                }
+            }
+        }
+    }
+
     fun updateFoundRequestStatus(
         requestId: String,
         newStatus: String,

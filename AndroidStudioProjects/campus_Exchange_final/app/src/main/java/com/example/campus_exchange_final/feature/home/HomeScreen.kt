@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -100,6 +101,7 @@ fun HomeScreen(
 ) {
     LaunchedEffect(Unit) {
         homeViewModel.fetchListings()
+        homeViewModel.fetchUserProfile()
     }
     val currentUser = remember {
         try {
@@ -109,16 +111,22 @@ fun HomeScreen(
         }
     }
 
-    val fullName = remember(currentUser) {
-        val metaName = currentUser?.userMetadata?.get("full_name")?.toString()?.removeSurrounding("\"")
-        if (!metaName.isNullOrBlank() && metaName != "null") {
-            metaName
+    val liveProfile = homeViewModel.userProfile
+
+    val fullName = remember(currentUser, liveProfile) {
+        if (liveProfile != null && liveProfile.full_name.isNotBlank()) {
+            liveProfile.full_name
         } else {
-            val email = currentUser?.email
-            if (!email.isNullOrBlank()) {
-                email.substringBefore("@").replaceFirstChar { it.uppercase() }
+            val metaName = currentUser?.userMetadata?.get("full_name")?.toString()?.removeSurrounding("\"")
+            if (!metaName.isNullOrBlank() && metaName != "null") {
+                metaName
             } else {
-                "Student"
+                val email = currentUser?.email
+                if (!email.isNullOrBlank()) {
+                    email.substringBefore("@").replaceFirstChar { it.uppercase() }
+                } else {
+                    "Student"
+                }
             }
         }
     }
@@ -172,6 +180,7 @@ fun HomeScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .statusBarsPadding()
                     .padding(horizontal = 20.dp, vertical = 16.dp)
             ) {
                 Row(

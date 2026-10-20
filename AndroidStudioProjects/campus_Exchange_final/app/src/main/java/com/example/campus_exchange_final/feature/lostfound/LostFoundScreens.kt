@@ -21,13 +21,16 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -389,6 +392,7 @@ fun LostFoundDetailsScreen(
 ) {
     var message by remember { mutableStateOf("") }
     var showDialog by remember { mutableStateOf(false) }
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
 
     val currentUserId = remember {
         try {
@@ -397,7 +401,43 @@ fun LostFoundDetailsScreen(
             null
         }
     }
-    val isOwner = currentUserId == item.userId
+    val isOwner = currentUserId != null && currentUserId == item.userId
+
+    if (showDeleteConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmDialog = false },
+            title = {
+                Text(
+                    text = "Delete Report",
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
+                )
+            },
+            text = {
+                Text(
+                    text = "Are you sure you want to delete this Lost & Found report? This action cannot be undone.",
+                    color = TextSecondary
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirmDialog = false
+                        lostFoundViewModel.deleteReport(item.id) {
+                            onBackClick()
+                        }
+                    }
+                ) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirmDialog = false }) {
+                    Text("Cancel", color = TextPrimary)
+                }
+            }
+        )
+    }
 
     Box(
         modifier = modifier
@@ -410,7 +450,30 @@ fun LostFoundDetailsScreen(
                 .padding(20.dp)
                 .verticalScroll(rememberScrollState())
         ) {
-            CampusTopBar(title = "Item Details", onBackClick = onBackClick)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CampusTopBar(
+                    title = "Item Details",
+                    onBackClick = onBackClick,
+                    modifier = Modifier.weight(1f)
+                )
+
+                if (isOwner) {
+                    IconButton(
+                        onClick = { showDeleteConfirmDialog = true },
+                        modifier = Modifier.padding(end = 4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Delete Report",
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+            }
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -475,6 +538,14 @@ fun LostFoundDetailsScreen(
                     text = "I Found This",
                     onClick = { showDialog = true },
                     containerColor = TealFound
+                )
+            }
+
+            if (isOwner) {
+                CampusButton(
+                    text = "Delete Report",
+                    onClick = { showDeleteConfirmDialog = true },
+                    containerColor = MaterialTheme.colorScheme.error
                 )
             }
 

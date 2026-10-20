@@ -195,7 +195,7 @@ fun CampusExchangeApp(modifier: Modifier = Modifier) {
                     activeTab = tab
                     when (tab) {
                         NavTab.HOME -> {}
-                        NavTab.BORROW -> {}
+                        NavTab.BORROW -> navigateTo(ScreenRoute.LEND_ITEM)
                         NavTab.LOST_FOUND -> navigateTo(ScreenRoute.LOST_FOUND)
                         NavTab.ACTIVITY -> navigateTo(ScreenRoute.ACTIVITY)
                         NavTab.PROFILE -> navigateTo(ScreenRoute.PROFILE)
@@ -551,7 +551,7 @@ fun CampusExchangeApp(modifier: Modifier = Modifier) {
                     activeTab = tab
                     when (tab) {
                         NavTab.HOME -> screenStack = listOf(ScreenRoute.HOME)
-                        NavTab.BORROW -> {}
+                        NavTab.BORROW -> navigateTo(ScreenRoute.LEND_ITEM)
                         NavTab.LOST_FOUND -> navigateTo(ScreenRoute.LOST_FOUND)
                         NavTab.ACTIVITY -> {}
                         NavTab.PROFILE -> navigateTo(ScreenRoute.PROFILE)
@@ -571,7 +571,7 @@ fun CampusExchangeApp(modifier: Modifier = Modifier) {
                     activeTab = tab
                     when (tab) {
                         NavTab.HOME -> screenStack = listOf(ScreenRoute.HOME)
-                        NavTab.BORROW -> {}
+                        NavTab.BORROW -> navigateTo(ScreenRoute.LEND_ITEM)
                         NavTab.LOST_FOUND -> navigateTo(ScreenRoute.LOST_FOUND)
                         NavTab.ACTIVITY -> navigateTo(ScreenRoute.ACTIVITY)
                         NavTab.PROFILE -> {}

@@ -427,12 +427,16 @@ fun LendItemScreen(
 
                             if (itemName.isBlank()) {
                                 errorMessage = "Please enter an item name."
+                                android.widget.Toast.makeText(context, "Please enter an item name.", android.widget.Toast.LENGTH_SHORT).show()
                             } else if (selectedCategory == "Other" && customCategory.isBlank()) {
                                 errorMessage = "Please specify a custom category."
+                                android.widget.Toast.makeText(context, "Please specify a custom category.", android.widget.Toast.LENGTH_SHORT).show()
                             } else if (lendingType != 0 && price.isBlank()) {
                                 errorMessage = "Please enter a price."
+                                android.widget.Toast.makeText(context, "Please enter a price.", android.widget.Toast.LENGTH_SHORT).show()
                             } else if (location.isBlank()) {
                                 errorMessage = "Please specify a pickup location."
+                                android.widget.Toast.makeText(context, "Please specify a pickup location.", android.widget.Toast.LENGTH_SHORT).show()
                             } else {
                                 errorMessage = null
                                 borrowViewModel.listItem(
@@ -447,6 +451,7 @@ fun LendItemScreen(
                                     context = context,
                                     description = description
                                 ) {
+                                    android.widget.Toast.makeText(context, "Item listed successfully!", android.widget.Toast.LENGTH_SHORT).show()
                                     onListSuccess()
                                 }
                             }
