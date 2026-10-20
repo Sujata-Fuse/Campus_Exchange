@@ -140,9 +140,9 @@ fun ProfileScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    StatCard("12", "Reports", Modifier.weight(1f))
-                    StatCard("5", "Borrows", Modifier.weight(1f))
-                    StatCard("5", "Claims", Modifier.weight(1f))
+                    StatCard(profileViewModel.reportsCount.toString(), "Reports", Modifier.weight(1f))
+                    StatCard(profileViewModel.borrowsCount.toString(), "Borrows", Modifier.weight(1f))
+                    StatCard(profileViewModel.claimsCount.toString(), "Claims", Modifier.weight(1f))
                 }
 
                 Spacer(modifier = Modifier.height(28.dp))

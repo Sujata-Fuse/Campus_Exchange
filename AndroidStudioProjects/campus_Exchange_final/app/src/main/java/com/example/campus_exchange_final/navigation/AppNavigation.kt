@@ -26,6 +26,8 @@ import com.example.campus_exchange_final.feature.borrow.LendItemScreen
 import com.example.campus_exchange_final.feature.borrow.RequestToBorrowScreen
 import com.example.campus_exchange_final.feature.chat.ChatConversation
 import com.example.campus_exchange_final.feature.chat.ChatConversationScreen
+import com.example.campus_exchange_final.feature.chat.ChatEntity
+import com.example.campus_exchange_final.feature.chat.ChatInsertPayload
 import com.example.campus_exchange_final.feature.chat.ChatListScreen
 import com.example.campus_exchange_final.feature.home.HomeScreen
 import com.example.campus_exchange_final.feature.home.ItemListing
@@ -187,6 +189,7 @@ fun CampusExchangeApp(modifier: Modifier = Modifier) {
                 onBorrowBannerClick = { navigateTo(ScreenRoute.LEND_ITEM) },
                 onLostFoundBannerClick = { navigateTo(ScreenRoute.LOST_FOUND) },
                 onNotificationClick = { navigateTo(ScreenRoute.NOTIFICATIONS) },
+                onChatListClick = { navigateTo(ScreenRoute.CHAT_LIST) },
                 selectedTab = activeTab,
                 onTabSelected = { tab ->
                     activeTab = tab
@@ -211,6 +214,7 @@ fun CampusExchangeApp(modifier: Modifier = Modifier) {
                         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
                             val currentUserId = SupabaseProvider.client.auth.currentUserOrNull()?.id ?: ""
                             val ownerId = item.userId.ifBlank { currentUserId }
+                            if (currentUserId.isBlank() || ownerId.isBlank() || currentUserId == ownerId) return@launch
                             try {
                                 val existing = SupabaseProvider.client.from("chats")
                                     .select(io.github.jan.supabase.postgrest.query.Columns.list("*")) {
@@ -218,56 +222,109 @@ fun CampusExchangeApp(modifier: Modifier = Modifier) {
                                             eq("item_id", item.id)
                                         }
                                     }
-                                    .decodeList<ChatConversation>()
+                                    .decodeList<ChatEntity>()
 
                                 val chat = existing.firstOrNull { 
-                                    (it.participantOne == currentUserId && it.participantTwo == ownerId) ||
-                                    (it.participantOne == ownerId && it.participantTwo == currentUserId)
-                                } ?: existing.firstOrNull()
+                                    (it.participantOne == ownerId && it.participantTwo == currentUserId) ||
+                                    (it.participantOne == currentUserId && it.participantTwo == ownerId)
+                                }
 
                                 val targetChat = if (chat != null) {
                                     chat
                                 } else {
-                                    val newChat = ChatConversation(
+                                    val newPayload = ChatInsertPayload(
                                         itemId = item.id,
-                                        participantOne = currentUserId,
-                                        participantTwo = ownerId,
-                                        relatedItemTitle = item.title,
-                                        workflowType = ChatWorkflowType.BORROW_LEND,
+                                        participantOne = ownerId,
+                                        participantTwo = currentUserId,
+                                        workflowType = "BORROW_LEND",
                                         lastMessage = "Chat started for ${item.title}"
                                     )
-                                    val inserted = SupabaseProvider.client.from("chats").insert(newChat) {
+                                    val inserted = SupabaseProvider.client.from("chats").insert(newPayload) {
                                         select()
-                                    }.decodeSingle<ChatConversation>()
+                                    }.decodeSingle<ChatEntity>()
                                     inserted
                                 }
 
                                 val ownerProfile = try {
-                                    SupabaseProvider.client.from("profiles")
+                                    SupabaseProvider.client.from("public_profiles")
                                         .select(io.github.jan.supabase.postgrest.query.Columns.list("*")) {
                                             filter { eq("id", ownerId) }
                                         }
                                         .decodeSingleOrNull<com.example.campus_exchange_final.feature.profile.UserProfile>()
                                 } catch (_: Exception) { null }
 
-                                val finalChat = targetChat.copy(
+                                val finalChat = ChatConversation(
+                                    id = targetChat.id,
                                     participantName = ownerProfile?.full_name ?: "Item Owner",
                                     participantRole = ownerProfile?.course ?: "Student",
-                                    relatedItemTitle = item.title
+                                    relatedItemTitle = item.title,
+                                    relatedItemSubtitle = "Borrow/Lend",
+                                    workflowType = ChatWorkflowType.BORROW_LEND,
+                                    lastMessage = targetChat.lastMessage,
+                                    timestamp = targetChat.createdAt,
+                                    itemId = item.id,
+                                    participantOne = targetChat.participantOne,
+                                    participantTwo = targetChat.participantTwo
                                 )
 
                                 activeConversation = finalChat
                                 navigateTo(ScreenRoute.CHAT_CONVERSATION)
                             } catch (e: Exception) {
                                 e.printStackTrace()
+                            }
+                        }
+                    },
+                    onOpenChatWithUser = { otherUserId, otherUserName ->
+                        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                            val currentUserId = SupabaseProvider.client.auth.currentUserOrNull()?.id ?: ""
+                            val ownerId = item.userId.ifBlank { currentUserId }
+                            if (currentUserId.isBlank() || otherUserId.isBlank() || currentUserId == otherUserId) return@launch
+                            try {
+                                val existing = SupabaseProvider.client.from("chats")
+                                    .select(io.github.jan.supabase.postgrest.query.Columns.list("*")) {
+                                        filter {
+                                            eq("item_id", item.id)
+                                        }
+                                    }
+                                    .decodeList<ChatEntity>()
+
+                                val chat = existing.firstOrNull {
+                                    (it.participantOne == ownerId && it.participantTwo == otherUserId) ||
+                                    (it.participantOne == otherUserId && it.participantTwo == ownerId)
+                                }
+
+                                val targetChat = if (chat != null) {
+                                    chat
+                                } else {
+                                    val newPayload = ChatInsertPayload(
+                                        itemId = item.id,
+                                        participantOne = ownerId,
+                                        participantTwo = otherUserId,
+                                        workflowType = "BORROW_LEND",
+                                        lastMessage = "Chat started for ${item.title}"
+                                    )
+                                    val inserted = SupabaseProvider.client.from("chats").insert(newPayload) {
+                                        select()
+                                    }.decodeSingle<ChatEntity>()
+                                    inserted
+                                }
+
                                 activeConversation = ChatConversation(
-                                    itemId = item.id,
-                                    participantName = "Item Owner",
+                                    id = targetChat.id,
+                                    participantName = otherUserName,
+                                    participantRole = "Borrower",
                                     relatedItemTitle = item.title,
-                                    participantOne = currentUserId,
-                                    participantTwo = ownerId
+                                    relatedItemSubtitle = "Borrow/Lend",
+                                    workflowType = ChatWorkflowType.BORROW_LEND,
+                                    lastMessage = targetChat.lastMessage,
+                                    timestamp = targetChat.createdAt,
+                                    itemId = item.id,
+                                    participantOne = targetChat.participantOne,
+                                    participantTwo = targetChat.participantTwo
                                 )
                                 navigateTo(ScreenRoute.CHAT_CONVERSATION)
+                            } catch (e: Exception) {
+                                e.printStackTrace()
                             }
                         }
                     },
@@ -312,7 +369,61 @@ fun CampusExchangeApp(modifier: Modifier = Modifier) {
             selectedLostItem?.let { item ->
                 LostFoundDetailsScreen(
                     item = item,
-                    onBackClick = { popBackStack() }
+                    onBackClick = { popBackStack() },
+                    onOpenChat = { otherUserId, otherUserName ->
+                        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                            val currentUserId = SupabaseProvider.client.auth.currentUserOrNull()?.id ?: ""
+                            val ownerId = item.userId.ifBlank { currentUserId }
+                            if (currentUserId.isBlank() || otherUserId.isBlank() || currentUserId == otherUserId) return@launch
+                            try {
+                                val existing = SupabaseProvider.client.from("chats")
+                                    .select(io.github.jan.supabase.postgrest.query.Columns.list("*")) {
+                                        filter {
+                                            eq("lost_found_id", item.id)
+                                        }
+                                    }
+                                    .decodeList<ChatEntity>()
+
+                                val chat = existing.firstOrNull {
+                                    (it.participantOne == ownerId && it.participantTwo == otherUserId) ||
+                                    (it.participantOne == otherUserId && it.participantTwo == ownerId)
+                                }
+
+                                val targetChat = if (chat != null) {
+                                    chat
+                                } else {
+                                    val newPayload = ChatInsertPayload(
+                                        lostFoundId = item.id,
+                                        participantOne = ownerId,
+                                        participantTwo = otherUserId,
+                                        workflowType = "LOST_FOUND",
+                                        lastMessage = "Chat started for ${item.title}"
+                                    )
+                                    val inserted = SupabaseProvider.client.from("chats").insert(newPayload) {
+                                        select()
+                                    }.decodeSingle<ChatEntity>()
+                                    inserted
+                                }
+
+                                activeConversation = ChatConversation(
+                                    id = targetChat.id,
+                                    participantName = otherUserName,
+                                    participantRole = "Finder",
+                                    relatedItemTitle = item.title,
+                                    relatedItemSubtitle = "Lost & Found",
+                                    workflowType = ChatWorkflowType.LOST_FOUND,
+                                    lastMessage = targetChat.lastMessage,
+                                    timestamp = targetChat.createdAt,
+                                    itemId = null,
+                                    participantOne = targetChat.participantOne,
+                                    participantTwo = targetChat.participantTwo
+                                )
+                                navigateTo(ScreenRoute.CHAT_CONVERSATION)
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        }
+                    }
                 )
             }
         }
@@ -335,6 +446,106 @@ fun CampusExchangeApp(modifier: Modifier = Modifier) {
 
         ScreenRoute.ACTIVITY -> {
             ActivityScreen(
+                onOpenChat = { activityItem ->
+                    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                        val currentUserId = SupabaseProvider.client.auth.currentUserOrNull()?.id ?: ""
+                        val ownerId = activityItem.ownerId
+                        val requesterId = activityItem.requesterId
+                        val entityId = activityItem.itemId
+                        val isLostFound = activityItem.type == "lost_found"
+                        if (currentUserId.isBlank() || ownerId.isBlank() || requesterId.isBlank() || entityId.isBlank()) return@launch
+
+                        try {
+                            val existing = SupabaseProvider.client.from("chats")
+                                .select(io.github.jan.supabase.postgrest.query.Columns.list("*")) {
+                                    filter {
+                                        if (isLostFound) {
+                                            eq("lost_found_id", entityId)
+                                        } else {
+                                            eq("item_id", entityId)
+                                        }
+                                    }
+                                }
+                                .decodeList<ChatEntity>()
+
+                            val chat = existing.firstOrNull {
+                                (it.participantOne == ownerId && it.participantTwo == requesterId) ||
+                                (it.participantOne == requesterId && it.participantTwo == ownerId)
+                            }
+
+                            val targetChat = if (chat != null) {
+                                chat
+                            } else {
+                                val newPayload = if (isLostFound) {
+                                    ChatInsertPayload(
+                                        lostFoundId = entityId,
+                                        participantOne = ownerId,
+                                        participantTwo = requesterId,
+                                        workflowType = "LOST_FOUND",
+                                        lastMessage = "Found claim accepted. Chat opened."
+                                    )
+                                } else {
+                                    ChatInsertPayload(
+                                        itemId = entityId,
+                                        participantOne = ownerId,
+                                        participantTwo = requesterId,
+                                        workflowType = "BORROW_LEND",
+                                        lastMessage = "Borrow request accepted. Chat opened."
+                                    )
+                                }
+                                SupabaseProvider.client.from("chats").insert(newPayload) {
+                                    select()
+                                }.decodeSingle<ChatEntity>()
+                            }
+
+                            val otherUserId = if (currentUserId == ownerId) requesterId else ownerId
+                            val otherProfile = try {
+                                SupabaseProvider.client.from("public_profiles")
+                                    .select(io.github.jan.supabase.postgrest.query.Columns.list("*")) {
+                                        filter { eq("id", otherUserId) }
+                                    }
+                                    .decodeSingleOrNull<com.example.campus_exchange_final.feature.profile.UserProfile>()
+                            } catch (_: Exception) { null }
+
+                            val titleResolved = if (isLostFound) {
+                                try {
+                                    val report = SupabaseProvider.client.from("lost_found_reports")
+                                        .select(io.github.jan.supabase.postgrest.query.Columns.list("*")) {
+                                            filter { eq("id", entityId) }
+                                        }
+                                        .decodeSingleOrNull<com.example.campus_exchange_final.feature.lostfound.LostFoundItem>()
+                                    report?.title
+                                } catch (_: Exception) { null }
+                            } else {
+                                try {
+                                    val item = SupabaseProvider.client.from("items")
+                                        .select(io.github.jan.supabase.postgrest.query.Columns.list("*")) {
+                                            filter { eq("id", entityId) }
+                                        }
+                                        .decodeSingleOrNull<ItemListing>()
+                                    item?.title
+                                } catch (_: Exception) { null }
+                            }
+
+                            activeConversation = ChatConversation(
+                                id = targetChat.id,
+                                participantName = otherProfile?.full_name ?: if (currentUserId == ownerId) "Finder/Requester" else "Owner",
+                                participantRole = otherProfile?.course ?: "Student",
+                                relatedItemTitle = titleResolved ?: "Campus Exchange Item",
+                                relatedItemSubtitle = if (isLostFound) "Lost & Found" else "Borrow/Lend",
+                                workflowType = if (isLostFound) ChatWorkflowType.LOST_FOUND else ChatWorkflowType.BORROW_LEND,
+                                lastMessage = targetChat.lastMessage,
+                                timestamp = targetChat.createdAt,
+                                itemId = if (!isLostFound) entityId else null,
+                                participantOne = targetChat.participantOne,
+                                participantTwo = targetChat.participantTwo
+                            )
+                            navigateTo(ScreenRoute.CHAT_CONVERSATION)
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                },
                 selectedTab = activeTab,
                 onTabSelected = { tab ->
                     activeTab = tab

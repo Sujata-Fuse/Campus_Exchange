@@ -61,6 +61,7 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("io.github.jan-tennert.supabase:postgrest-kt:3.8.0")
     implementation("io.github.jan-tennert.supabase:auth-kt:3.8.0")
+    implementation("io.github.jan-tennert.supabase:storage-kt:3.8.0")
     implementation("io.ktor:ktor-client-android:3.6.0")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

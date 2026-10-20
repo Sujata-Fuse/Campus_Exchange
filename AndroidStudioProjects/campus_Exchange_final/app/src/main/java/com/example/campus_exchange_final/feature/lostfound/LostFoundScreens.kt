@@ -383,6 +383,7 @@ fun ReportItemScreen(
 fun LostFoundDetailsScreen(
     item: LostFoundItem,
     onBackClick: () -> Unit,
+    onOpenChat: (String, String) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
     lostFoundViewModel: LostFoundViewModel = remember { LostFoundViewModel() }
 ) {
@@ -555,6 +556,14 @@ fun LostFoundDetailsScreen(
                                         ) {
                                             Text("Reject")
                                         }
+                                    }
+                                } else if (req.status == "Accepted") {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    androidx.compose.material3.OutlinedButton(
+                                        onClick = { onOpenChat(req.requesterId, "Finder") },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("Chat with Finder")
                                     }
                                 }
                             }

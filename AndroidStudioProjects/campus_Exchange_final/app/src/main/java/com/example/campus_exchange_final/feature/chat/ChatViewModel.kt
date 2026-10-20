@@ -35,10 +35,63 @@ class ChatViewModel : ViewModel() {
             try {
                 val userId = SupabaseProvider.client.auth.currentUserOrNull()?.id
                 if (userId != null) {
-                    val result = SupabaseProvider.client.from("chats")
+                    val entities = SupabaseProvider.client.from("chats")
                         .select(Columns.list("*"))
-                        .decodeList<ChatConversation>()
-                    conversations = result
+                        .decodeList<ChatEntity>()
+
+                    val enrichedList = entities.map { entity ->
+                        val otherUserId = if (entity.participantOne == userId) entity.participantTwo else entity.participantOne
+                        val otherProfile = if (otherUserId.isNotBlank()) {
+                            try {
+                                SupabaseProvider.client.from("public_profiles")
+                                    .select(Columns.list("*")) {
+                                        filter { eq("id", otherUserId) }
+                                    }
+                                    .decodeSingleOrNull<com.example.campus_exchange_final.feature.profile.UserProfile>()
+                            } catch (_: Exception) { null }
+                        } else null
+
+                        val itemTitle = if (!entity.itemId.isNullOrBlank()) {
+                            try {
+                                val item = SupabaseProvider.client.from("items")
+                                    .select(Columns.list("*")) {
+                                        filter { eq("id", entity.itemId) }
+                                    }
+                                    .decodeSingleOrNull<com.example.campus_exchange_final.feature.home.ItemListing>()
+                                item?.title
+                            } catch (_: Exception) { null }
+                        } else if (!entity.lostFoundId.isNullOrBlank()) {
+                            try {
+                                val lfItem = SupabaseProvider.client.from("lost_found_reports")
+                                    .select(Columns.list("*")) {
+                                        filter { eq("id", entity.lostFoundId) }
+                                    }
+                                    .decodeSingleOrNull<com.example.campus_exchange_final.feature.lostfound.LostFoundItem>()
+                                lfItem?.title
+                            } catch (_: Exception) { null }
+                        } else null
+
+                        val workflowTypeEnum = try {
+                            ChatWorkflowType.valueOf(entity.workflowType)
+                        } catch (_: Exception) {
+                            ChatWorkflowType.BORROW_LEND
+                        }
+
+                        ChatConversation(
+                            id = entity.id,
+                            participantName = otherProfile?.full_name ?: "Campus Student",
+                            participantRole = otherProfile?.course ?: "Student",
+                            relatedItemTitle = itemTitle ?: "Campus Exchange Item",
+                            relatedItemSubtitle = if (workflowTypeEnum == ChatWorkflowType.BORROW_LEND) "Borrow/Lend" else "Lost & Found",
+                            workflowType = workflowTypeEnum,
+                            lastMessage = entity.lastMessage,
+                            timestamp = entity.createdAt,
+                            itemId = entity.itemId,
+                            participantOne = entity.participantOne,
+                            participantTwo = entity.participantTwo
+                        )
+                    }
+                    conversations = enrichedList
                 }
             } catch (e: Exception) {
                 errorMessage = e.localizedMessage ?: "Failed to load chats."
@@ -59,6 +112,7 @@ class ChatViewModel : ViewModel() {
                         filter {
                             eq("chat_id", chatId)
                         }
+                        order("created_at", io.github.jan.supabase.postgrest.query.Order.ASCENDING)
                     }
                     .decodeList<ChatMessage>()
                 messages = result.map { it.copy(isMe = it.senderName == currentUserId) }
@@ -80,9 +134,14 @@ class ChatViewModel : ViewModel() {
                     val payload = mapOf(
                         "chat_id" to chatId,
                         "sender_id" to senderId,
-                        "text" to text
+                        "text" to text.trim()
                     )
                     SupabaseProvider.client.from("messages").insert(payload)
+                    try {
+                        SupabaseProvider.client.from("chats").update(mapOf("last_message" to text.trim())) {
+                            filter { eq("id", chatId) }
+                        }
+                    } catch (_: Exception) { }
                     fetchMessages(chatId)
                     onsuccess()
                 }

@@ -28,6 +28,15 @@ class ProfileViewModel : ViewModel() {
     var profile by mutableStateOf<UserProfile?>(null)
         private set
 
+    var reportsCount by mutableStateOf(0)
+        private set
+
+    var borrowsCount by mutableStateOf(0)
+        private set
+
+    var claimsCount by mutableStateOf(0)
+        private set
+
     var isLoading by mutableStateOf(false)
         private set
 
@@ -62,7 +71,35 @@ class ProfileViewModel : ViewModel() {
                         }
                         .decodeSingleOrNull<UserProfile>()
 
+                    val userReports = try {
+                        SupabaseProvider.client.from("lost_found_reports")
+                            .select(Columns.list("id")) {
+                                filter { eq("user_id", userId) }
+                            }
+                            .decodeList<Map<String, String>>()
+                    } catch (_: Exception) { emptyList() }
+
+                    val userBorrows = try {
+                        SupabaseProvider.client.from("borrow_requests")
+                            .select(Columns.list("id")) {
+                                filter { eq("requester_id", userId) }
+                            }
+                            .decodeList<Map<String, String>>()
+                    } catch (_: Exception) { emptyList() }
+
+                    val userClaims = try {
+                        SupabaseProvider.client.from("found_requests")
+                            .select(Columns.list("id")) {
+                                filter { eq("requester_id", userId) }
+                            }
+                            .decodeList<Map<String, String>>()
+                    } catch (_: Exception) { emptyList() }
+
                     withContext(Dispatchers.Main) {
+                        reportsCount = userReports.size
+                        borrowsCount = userBorrows.size
+                        claimsCount = userClaims.size
+
                         if (result != null) {
                             profile = result
                         } else {

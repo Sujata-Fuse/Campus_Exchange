@@ -1,5 +1,7 @@
 package com.example.campus_exchange_final.feature.borrow
 
+import android.content.Context
+import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -9,11 +11,13 @@ import com.example.campus_exchange_final.core.SupabaseProvider
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.query.Columns
+import io.github.jan.supabase.storage.storage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import java.util.UUID
 
 @Serializable
 data class ItemInsertPayload(
@@ -24,9 +28,7 @@ data class ItemInsertPayload(
     val location: String,
     @SerialName("image_url") val imageUrl: String = "",
     @SerialName("lending_type") val lendingType: String = "Free",
-    val duration: String = "",
-    val description: String = "",
-    val condition: String = "Good"
+    val duration: String = ""
 )
 
 @Serializable
@@ -61,6 +63,24 @@ class BorrowViewModel : ViewModel() {
     var successMessage by mutableStateOf<String?>(null)
         private set
 
+    suspend fun uploadItemImage(context: Context, imageUri: Uri, userId: String): String {
+        val inputStream = context.contentResolver.openInputStream(imageUri)
+            ?: throw IllegalArgumentException("Cannot open image input stream.")
+        val bytes = inputStream.use { it.readBytes() }
+        val extension = when (context.contentResolver.getType(imageUri)) {
+            "image/png" -> "png"
+            "image/webp" -> "webp"
+            else -> "jpg"
+        }
+        val filename = "${UUID.randomUUID()}.$extension"
+        val storagePath = "$userId/$filename"
+        val bucket = SupabaseProvider.client.storage.from("campus-images")
+        bucket.upload(storagePath, bytes) {
+            upsert = false
+        }
+        return bucket.publicUrl(storagePath)
+    }
+
     fun listItem(
         title: String,
         category: String,
@@ -69,7 +89,8 @@ class BorrowViewModel : ViewModel() {
         price: String,
         duration: String,
         condition: String = "",
-        imageUrl: String = "",
+        imageUri: Uri? = null,
+        context: Context? = null,
         description: String = "",
         onsuccess: () -> Unit
     ) {
@@ -80,7 +101,29 @@ class BorrowViewModel : ViewModel() {
                 successMessage = null
             }
             try {
-                val userId = SupabaseProvider.client.auth.currentUserOrNull()?.id ?: "00000000-0000-0000-0000-000000000000"
+                val userId = SupabaseProvider.client.auth.currentUserOrNull()?.id
+                if (userId.isNullOrBlank()) {
+                    withContext(Dispatchers.Main) {
+                        errorMessage = "User not authenticated. Please log in first."
+                        isLoading = false
+                    }
+                    return@launch
+                }
+
+                val uploadedImageUrl: String = if (imageUri != null && context != null) {
+                    try {
+                        uploadItemImage(context, imageUri, userId)
+                    } catch (uploadEx: Throwable) {
+                        uploadEx.printStackTrace()
+                        withContext(Dispatchers.Main) {
+                            errorMessage = "Image upload failed: ${uploadEx.localizedMessage ?: "Unknown storage error"}"
+                            isLoading = false
+                        }
+                        return@launch
+                    }
+                } else {
+                    ""
+                }
 
                 val formattedPrice = when (lendingType) {
                     "Fixed Price", "Rent on Duration" -> {
@@ -96,12 +139,11 @@ class BorrowViewModel : ViewModel() {
                     else -> "Free"
                 }
 
-                val formattedDuration = when {
-                    duration.isNotBlank() && condition.isNotBlank() -> "$duration • Condition: $condition"
-                    duration.isNotBlank() -> duration
-                    condition.isNotBlank() -> "Condition: $condition"
-                    else -> ""
-                }
+                val durationParts = mutableListOf<String>()
+                if (duration.isNotBlank()) durationParts.add(duration)
+                if (condition.isNotBlank()) durationParts.add("Condition: $condition")
+                if (description.isNotBlank()) durationParts.add("Note: $description")
+                val formattedDuration = durationParts.joinToString(" • ")
 
                 val payload = ItemInsertPayload(
                     userId = userId,
@@ -111,9 +153,7 @@ class BorrowViewModel : ViewModel() {
                     lendingType = lendingType,
                     price = formattedPrice,
                     duration = formattedDuration,
-                    imageUrl = imageUrl,
-                    description = description,
-                    condition = condition.ifBlank { "Good" }
+                    imageUrl = uploadedImageUrl
                 )
 
                 SupabaseProvider.client.from("items").insert(payload)
@@ -156,6 +196,15 @@ class BorrowViewModel : ViewModel() {
                     return@launch
                 }
 
+                // Prevent users from requesting their own items
+                if (ownerId.isNotBlank() && requesterId == ownerId) {
+                    withContext(Dispatchers.Main) {
+                        errorMessage = "You cannot request to borrow your own item."
+                        isLoading = false
+                    }
+                    return@launch
+                }
+
                 // Check request eligibility
                 val existingRequests = try {
                     SupabaseProvider.client.from("borrow_requests")
@@ -175,9 +224,9 @@ class BorrowViewModel : ViewModel() {
                         if (activeRequest.requesterId == requesterId) {
                             errorMessage = "You already have a pending or accepted request for this item."
                         } else if (activeRequest.status == "Accepted") {
-                            errorMessage = "This item is currently borrowed."
+                            errorMessage = "This item is currently borrowed and unavailable."
                         } else {
-                            errorMessage = "A request is already pending for this item."
+                            errorMessage = "A borrow request is already pending for this item."
                         }
                         isLoading = false
                     }
@@ -187,9 +236,9 @@ class BorrowViewModel : ViewModel() {
                 val request = BorrowRequestPayload(
                     itemId = itemId,
                     requesterId = requesterId,
-                    ownerId = if (ownerId.isNotBlank()) ownerId else requesterId,
+                    ownerId = ownerId,
                     message = message,
-                    duration = duration,
+                    duration = duration.ifBlank { "7 Days" },
                     status = "Pending"
                 )
                 SupabaseProvider.client.from("borrow_requests").insert(request)

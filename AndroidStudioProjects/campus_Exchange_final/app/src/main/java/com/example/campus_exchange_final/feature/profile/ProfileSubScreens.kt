@@ -42,6 +42,7 @@ import com.example.campus_exchange_final.ui.theme.AppBackground
 import com.example.campus_exchange_final.ui.theme.BrandPurple
 import com.example.campus_exchange_final.ui.theme.TextPrimary
 import com.example.campus_exchange_final.ui.theme.TextSecondary
+import io.github.jan.supabase.auth.auth
 
 // Screen 36: Edit Profile
 @Composable
@@ -114,8 +115,18 @@ fun EditProfileScreen(
 @Composable
 fun AccountSummaryScreen(
     onBackClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    profileViewModel: ProfileViewModel = remember { ProfileViewModel() }
 ) {
+    val currentUser = remember {
+        try {
+            com.example.campus_exchange_final.core.SupabaseProvider.client.auth.currentUserOrNull()
+        } catch (_: Exception) {
+            null
+        }
+    }
+    val email = currentUser?.email ?: "Not available"
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -137,15 +148,15 @@ fun AccountSummaryScreen(
                 colors = CardDefaults.cardColors(containerColor = Color.White)
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
-                    SummaryRow("College Email", "priya.sharma@college.edu")
+                    SummaryRow("College Email", email)
                     Spacer(modifier = Modifier.height(14.dp))
-                    SummaryRow("Member Since", "August 2023")
+                    SummaryRow("Member Since", "Campus Member")
                     Spacer(modifier = Modifier.height(14.dp))
-                    SummaryRow("Total Borrow Requests", "5")
+                    SummaryRow("Total Borrow Requests", profileViewModel.borrowsCount.toString())
                     Spacer(modifier = Modifier.height(14.dp))
-                    SummaryRow("Total Claims Submitted", "5")
+                    SummaryRow("Total Claims Submitted", profileViewModel.claimsCount.toString())
                     Spacer(modifier = Modifier.height(14.dp))
-                    SummaryRow("Trust Score", "4.9 / 5.0 ⭐")
+                    SummaryRow("Trust Score", "Verified Student ⭐")
                 }
             }
         }

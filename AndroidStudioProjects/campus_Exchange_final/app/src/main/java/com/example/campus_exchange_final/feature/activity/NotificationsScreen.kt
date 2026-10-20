@@ -1,6 +1,7 @@
 package com.example.campus_exchange_final.feature.activity
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +27,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,7 +50,11 @@ fun NotificationsScreen(
     modifier: Modifier = Modifier,
     activityViewModel: ActivityViewModel = remember { ActivityViewModel() }
 ) {
-    val notifications = activityViewModel.activities
+    LaunchedEffect(Unit) {
+        activityViewModel.fetchActivities()
+    }
+
+    val notifications = activityViewModel.activities.filter { it.type == "notification" }
 
     Box(
         modifier = modifier
@@ -88,9 +94,19 @@ fun NotificationsScreen(
                 ) {
                     items(notifications) { item ->
                         Card(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .then(
+                                    if (item.type == "notification" && !item.isRead) {
+                                        Modifier.clickable {
+                                            activityViewModel.markNotificationAsRead(item.id)
+                                        }
+                                    } else Modifier
+                                ),
                             shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.White)
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (!item.isRead) PurpleSurface.copy(alpha = 0.5f) else Color.White
+                            )
                         ) {
                             Column(modifier = Modifier.padding(14.dp)) {
                                 Row(
@@ -100,13 +116,13 @@ fun NotificationsScreen(
                                         modifier = Modifier
                                             .size(42.dp)
                                             .clip(CircleShape)
-                                            .background(PurpleSurface),
+                                            .background(if (!item.isRead) BrandPurple else PurpleSurface),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.Notifications,
                                             contentDescription = null,
-                                            tint = BrandPurple,
+                                            tint = if (!item.isRead) Color.White else BrandPurple,
                                             modifier = Modifier.size(20.dp)
                                         )
                                     }
@@ -149,7 +165,11 @@ fun NotificationsScreen(
                                     ) {
                                         Button(
                                             onClick = {
-                                                activityViewModel.updateBorrowRequest(item.requestId, "Accepted") {}
+                                                if (item.type == "lost_found") {
+                                                    activityViewModel.updateFoundRequest(item.requestId, "Accepted") {}
+                                                } else {
+                                                    activityViewModel.updateBorrowRequest(item.requestId, "Accepted") {}
+                                                }
                                             },
                                             modifier = Modifier.weight(1f)
                                         ) {
@@ -157,7 +177,11 @@ fun NotificationsScreen(
                                         }
                                         OutlinedButton(
                                             onClick = {
-                                                activityViewModel.updateBorrowRequest(item.requestId, "Rejected") {}
+                                                if (item.type == "lost_found") {
+                                                    activityViewModel.updateFoundRequest(item.requestId, "Rejected") {}
+                                                } else {
+                                                    activityViewModel.updateBorrowRequest(item.requestId, "Rejected") {}
+                                                }
                                             },
                                             modifier = Modifier.weight(1f)
                                         ) {

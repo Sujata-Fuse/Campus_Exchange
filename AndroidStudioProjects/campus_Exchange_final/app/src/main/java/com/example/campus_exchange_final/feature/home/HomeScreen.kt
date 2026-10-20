@@ -22,8 +22,11 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Notifications
@@ -89,6 +92,7 @@ fun HomeScreen(
     onBorrowBannerClick: () -> Unit,
     onLostFoundBannerClick: () -> Unit,
     onNotificationClick: () -> Unit = {},
+    onChatListClick: () -> Unit = {},
     selectedTab: NavTab = NavTab.HOME,
     onTabSelected: (NavTab) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -197,6 +201,22 @@ fun HomeScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
+                        IconButton(
+                            onClick = onChatListClick,
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(Color.White)
+                                .border(1.dp, BorderLight, CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Email,
+                                contentDescription = "Chats",
+                                tint = BrandPurple,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
                         IconButton(
                             onClick = onNotificationClick,
                             modifier = Modifier
@@ -496,7 +516,7 @@ fun ItemCard(
         Column(
             modifier = Modifier.padding(10.dp)
         ) {
-            // Image Placeholder Container
+            // Image Container
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -505,13 +525,22 @@ fun ItemCard(
                     .background(PurpleSurface),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = item.category.take(1),
-                    style = MaterialTheme.typography.headlineLarge.copy(
-                        color = BrandPurple,
-                        fontWeight = FontWeight.Bold
+                if (item.imageUrl.isNotBlank()) {
+                    AsyncImage(
+                        model = item.imageUrl,
+                        contentDescription = item.title,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
                     )
-                )
+                } else {
+                    Text(
+                        text = item.category.take(1),
+                        style = MaterialTheme.typography.headlineLarge.copy(
+                            color = BrandPurple,
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(8.dp))

@@ -36,9 +36,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.example.campus_exchange_final.core.SupabaseProvider
 import com.example.campus_exchange_final.core.ui.CampusButton
 import com.example.campus_exchange_final.core.ui.CampusTextField
@@ -71,6 +73,7 @@ fun ItemDetailsScreen(
     item: ItemListing,
     onRequestToBorrowClick: () -> Unit,
     onChatWithOwnerClick: () -> Unit,
+    onOpenChatWithUser: (String, String) -> Unit = { _, _ -> },
     onBackClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -78,6 +81,8 @@ fun ItemDetailsScreen(
     var ownerCourse by remember { mutableStateOf("Student") }
     var isOwner by remember { mutableStateOf(false) }
     var incomingRequests by remember { mutableStateOf<List<EnrichedBorrowRequest>>(emptyList()) }
+    var userActiveRequest by remember { mutableStateOf<BorrowRequestEntity?>(null) }
+    var isItemUnavailable by remember { mutableStateOf(false) }
 
     LaunchedEffect(item.id, item.userId) {
         val currentUserId = try {
@@ -118,6 +123,22 @@ fun ItemDetailsScreen(
             } catch (_: Exception) {
                 incomingRequests = emptyList()
             }
+        } else if (currentUserId != null) {
+            // For potential borrowers, check if user has an existing request or if item is already accepted/borrowed
+            try {
+                val reqs = withContext(Dispatchers.IO) {
+                    SupabaseProvider.client.from("borrow_requests")
+                        .select(Columns.list("*")) {
+                            filter { eq("item_id", item.id) }
+                        }
+                        .decodeList<BorrowRequestEntity>()
+                }
+                userActiveRequest = reqs.firstOrNull { it.requesterId == currentUserId && (it.status == "Pending" || it.status == "Accepted") }
+                isItemUnavailable = reqs.any { it.status == "Accepted" && it.requesterId != currentUserId }
+            } catch (_: Exception) {
+                userActiveRequest = null
+                isItemUnavailable = false
+            }
         }
 
         if (item.userId.isNotBlank()) {
@@ -134,7 +155,6 @@ fun ItemDetailsScreen(
                     ownerCourse = profile.course ?: "Student"
                 } else {
                     ownerName = "Campus Student"
-                    ownerCourse = "Student"
                 }
             } catch (_: Exception) {
                 ownerName = "Campus Student"
@@ -214,14 +234,23 @@ fun ItemDetailsScreen(
                     )
                 }
 
-                Text(
-                    text = item.title,
-                    style = MaterialTheme.typography.headlineLarge.copy(
-                        color = BrandPurple,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 28.sp
+                if (item.imageUrl.isNotBlank()) {
+                    AsyncImage(
+                        model = item.imageUrl,
+                        contentDescription = item.title,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
                     )
-                )
+                } else {
+                    Text(
+                        text = item.title,
+                        style = MaterialTheme.typography.headlineLarge.copy(
+                            color = BrandPurple,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 28.sp
+                        )
+                    )
+                }
             }
 
             Column(
@@ -470,7 +499,12 @@ fun ItemDetailsScreen(
                                                 horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
                                             ) {
                                                 androidx.compose.material3.Button(
-                                                    onClick = { updateRequestStatus(req.id, "Accepted") },
+                                                    onClick = {
+                                                        updateRequestStatus(req.id, "Accepted")
+                                                        incomingRequests.filter { it.entity.id != req.id && it.entity.status == "Pending" }.forEach { other ->
+                                                            updateRequestStatus(other.entity.id, "Rejected")
+                                                        }
+                                                    },
                                                     modifier = Modifier.weight(1f)
                                                 ) {
                                                     Text("Accept")
@@ -482,6 +516,14 @@ fun ItemDetailsScreen(
                                                     Text("Reject")
                                                 }
                                             }
+                                        } else if (req.status == "Accepted") {
+                                            Spacer(modifier = Modifier.height(10.dp))
+                                            androidx.compose.material3.OutlinedButton(
+                                                onClick = { onOpenChatWithUser(req.requesterId, enriched.requesterName) },
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Text("Chat with Borrower")
+                                            }
                                         }
                                     }
                                 }
@@ -489,12 +531,63 @@ fun ItemDetailsScreen(
                         }
                     }
                 } else {
-                    CampusButton(
-                        text = "Request to Borrow",
-                        onClick = onRequestToBorrowClick
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
+                    if (userActiveRequest != null) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (userActiveRequest?.status == "Accepted") TealSurface else PurpleSurface
+                            )
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Text(
+                                    text = if (userActiveRequest?.status == "Accepted") "Borrow Request Accepted!" else "Request Submitted (Pending)",
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp,
+                                        color = if (userActiveRequest?.status == "Accepted") TealFound else BrandPurple
+                                    )
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = if (userActiveRequest?.status == "Accepted") 
+                                        "The owner accepted your request. You can coordinate pickup via Chat." 
+                                        else "You have an active pending request for this item.",
+                                    style = MaterialTheme.typography.bodySmall.copy(color = TextSecondary)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                    } else if (isItemUnavailable) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5))
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Text(
+                                    text = "Item Currently Unavailable",
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp,
+                                        color = TextSecondary
+                                    )
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "This item has already been borrowed by another student.",
+                                    style = MaterialTheme.typography.bodySmall.copy(color = TextSecondary)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                    } else {
+                        CampusButton(
+                            text = "Request to Borrow",
+                            onClick = onRequestToBorrowClick
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
 
                     androidx.compose.material3.OutlinedButton(
                         onClick = onChatWithOwnerClick,
@@ -566,13 +659,22 @@ fun RequestToBorrowScreen(
                             .background(PurpleSurface),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = item.title.take(1),
-                            style = MaterialTheme.typography.titleLarge.copy(
-                                color = BrandPurple,
-                                fontWeight = FontWeight.Bold
+                        if (item.imageUrl.isNotBlank()) {
+                            AsyncImage(
+                                model = item.imageUrl,
+                                contentDescription = item.title,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
                             )
-                        )
+                        } else {
+                            Text(
+                                text = item.title.take(1),
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    color = BrandPurple,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            )
+                        }
                     }
 
                     Spacer(modifier = Modifier.width(14.dp))
@@ -600,21 +702,50 @@ fun RequestToBorrowScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            CampusTextField(
-                value = fromDate,
-                onValueChange = { fromDate = it },
-                label = "From Date",
-                leadingIcon = Icons.Default.CalendarToday
-            )
+            val isRent = item.lendingType.contains("Rent", ignoreCase = true)
+            val ownerDuration = item.duration.substringBefore(" •").trim()
 
-            Spacer(modifier = Modifier.height(16.dp))
+            if (isRent && ownerDuration.isNotBlank()) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = PurpleSurface)
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Text(
+                            text = "Owner's Rental Duration",
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = BrandPurple
+                            )
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = ownerDuration,
+                            style = MaterialTheme.typography.bodyLarge.copy(
+                                fontWeight = FontWeight.SemiBold,
+                                color = TextPrimary
+                            )
+                        )
+                    }
+                }
+            } else {
+                CampusTextField(
+                    value = fromDate,
+                    onValueChange = { fromDate = it },
+                    label = "From Date",
+                    leadingIcon = Icons.Default.CalendarToday
+                )
 
-            CampusTextField(
-                value = toDate,
-                onValueChange = { toDate = it },
-                label = "To Date",
-                leadingIcon = Icons.Default.CalendarToday
-            )
+                Spacer(modifier = Modifier.height(16.dp))
+
+                CampusTextField(
+                    value = toDate,
+                    onValueChange = { toDate = it },
+                    label = "To Date",
+                    leadingIcon = Icons.Default.CalendarToday
+                )
+            }
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -642,11 +773,12 @@ fun RequestToBorrowScreen(
                 text = if (borrowViewModel.isLoading) "Sending Request..." else "Send Request",
                 enabled = !borrowViewModel.isLoading,
                 onClick = {
+                    val finalDuration = if (isRent && ownerDuration.isNotBlank()) ownerDuration else "$fromDate to $toDate"
                     borrowViewModel.submitBorrowRequest(
                         itemId = item.id,
                         ownerId = item.userId,
                         message = message,
-                        duration = "$fromDate to $toDate"
+                        duration = finalDuration
                     ) {
                         onSendRequestClick()
                     }

@@ -28,6 +28,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,11 +52,16 @@ import com.example.campus_exchange_final.ui.theme.TextSecondary
 @Composable
 fun ActivityScreen(
     onActivityClick: (ActivityItem) -> Unit = {},
+    onOpenChat: (ActivityItem) -> Unit = {},
     selectedTab: NavTab = NavTab.ACTIVITY,
     onTabSelected: (NavTab) -> Unit = {},
     modifier: Modifier = Modifier,
     activityViewModel: ActivityViewModel = remember { ActivityViewModel() }
 ) {
+    LaunchedEffect(Unit) {
+        activityViewModel.fetchActivities()
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -82,6 +88,11 @@ fun ActivityScreen(
                     )
                 )
 
+                val displayActivities = activityViewModel.activities
+                val borrowCount = displayActivities.count { it.type == "borrow" }
+                val lostFoundCount = displayActivities.count { it.type == "lost_found" }
+                val notifCount = displayActivities.count { it.type == "notification" || it.status == "Pending" }
+
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // Stats Cards Row
@@ -89,9 +100,9 @@ fun ActivityScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    MetricCard("3", "Requests", PurpleSurface, BrandPurple, Modifier.weight(1f))
-                    MetricCard("2", "Matches", TealSurface, TealFound, Modifier.weight(1f))
-                    MetricCard("5", "Notifications", PurpleSurface, BrandPurple, Modifier.weight(1f))
+                    MetricCard(borrowCount.toString(), "Requests", PurpleSurface, BrandPurple, Modifier.weight(1f))
+                    MetricCard(lostFoundCount.toString(), "Matches", TealSurface, TealFound, Modifier.weight(1f))
+                    MetricCard(notifCount.toString(), "Alerts", PurpleSurface, BrandPurple, Modifier.weight(1f))
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
@@ -106,8 +117,6 @@ fun ActivityScreen(
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
-
-                val displayActivities = activityViewModel.activities
 
                 if (displayActivities.isEmpty()) {
                     Box(
@@ -190,7 +199,11 @@ fun ActivityScreen(
                                         ) {
                                             Button(
                                                 onClick = {
-                                                    activityViewModel.updateBorrowRequest(item.requestId, "Accepted") {}
+                                                    if (item.type == "lost_found") {
+                                                        activityViewModel.updateFoundRequest(item.requestId, "Accepted") {}
+                                                    } else {
+                                                        activityViewModel.updateBorrowRequest(item.requestId, "Accepted") {}
+                                                    }
                                                 },
                                                 modifier = Modifier.weight(1f)
                                             ) {
@@ -198,12 +211,24 @@ fun ActivityScreen(
                                             }
                                             OutlinedButton(
                                                 onClick = {
-                                                    activityViewModel.updateBorrowRequest(item.requestId, "Rejected") {}
+                                                    if (item.type == "lost_found") {
+                                                        activityViewModel.updateFoundRequest(item.requestId, "Rejected") {}
+                                                    } else {
+                                                        activityViewModel.updateBorrowRequest(item.requestId, "Rejected") {}
+                                                    }
                                                 },
                                                 modifier = Modifier.weight(1f)
                                             ) {
                                                 Text("Reject")
                                             }
+                                        }
+                                    } else if (item.type == "borrow" && item.status == "Accepted" && item.itemId.isNotBlank()) {
+                                        Spacer(modifier = Modifier.height(10.dp))
+                                        OutlinedButton(
+                                            onClick = { onOpenChat(item) },
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text("Open Chat")
                                         }
                                     }
                                 }

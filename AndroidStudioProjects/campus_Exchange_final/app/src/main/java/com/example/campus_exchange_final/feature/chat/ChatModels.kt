@@ -9,6 +9,28 @@ enum class ChatWorkflowType {
 }
 
 @Serializable
+data class ChatInsertPayload(
+    @SerialName("item_id") val itemId: String? = null,
+    @SerialName("lost_found_id") val lostFoundId: String? = null,
+    @SerialName("participant_one") val participantOne: String,
+    @SerialName("participant_two") val participantTwo: String,
+    @SerialName("workflow_type") val workflowType: String = "BORROW_LEND",
+    @SerialName("last_message") val lastMessage: String = ""
+)
+
+@Serializable
+data class ChatEntity(
+    val id: String = "",
+    @SerialName("item_id") val itemId: String? = null,
+    @SerialName("lost_found_id") val lostFoundId: String? = null,
+    @SerialName("participant_one") val participantOne: String = "",
+    @SerialName("participant_two") val participantTwo: String = "",
+    @SerialName("workflow_type") val workflowType: String = "BORROW_LEND",
+    @SerialName("last_message") val lastMessage: String = "",
+    @SerialName("created_at") val createdAt: String = ""
+)
+
+@Serializable
 data class ChatConversation(
     val id: String = "",
     val participantName: String = "Student",
@@ -34,3 +56,4 @@ data class ChatMessage(
     @SerialName("created_at") val timestamp: String = "",
     val isMe: Boolean = true
 )
+
