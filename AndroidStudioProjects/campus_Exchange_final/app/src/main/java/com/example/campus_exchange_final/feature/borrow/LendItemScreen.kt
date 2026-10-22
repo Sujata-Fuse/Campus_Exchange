@@ -67,9 +67,9 @@ fun LendItemScreen(
     var categoryExpanded by remember { mutableStateOf(false) }
     var durationExpanded by remember { mutableStateOf(false) }
 
-    // Image Picker Launcher
+    // Image Picker Launcher using modern Android Photo Picker
     val imagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
+        contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
         if (uri != null) {
             imageUri = uri
@@ -122,7 +122,11 @@ fun LendItemScreen(
                         .clip(RoundedCornerShape(16.dp))
                         .background(PurpleSurface)
                         .border(1.dp, BorderLight, RoundedCornerShape(16.dp))
-                        .clickable { imagePickerLauncher.launch("image/*") },
+                        .clickable {
+                            imagePickerLauncher.launch(
+                                androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        },
                     contentAlignment = Alignment.Center
                 ) {
                     if (imageUri != null) {
@@ -132,20 +136,44 @@ fun LendItemScreen(
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop
                         )
-                        IconButton(
-                            onClick = { imageUri = null },
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(8.dp)
-                                .background(Color.Black.copy(alpha = 0.5f), shape = CircleShape)
-                                .size(32.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "Remove Photo",
-                                tint = Color.White,
-                                modifier = Modifier.size(18.dp)
-                            )
+                        if (borrowViewModel.isLoading) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color.Black.copy(alpha = 0.5f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    CircularProgressIndicator(
+                                        color = Color.White,
+                                        modifier = Modifier.size(36.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = "Uploading Image...",
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            color = Color.White,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    )
+                                }
+                            }
+                        } else {
+                            IconButton(
+                                onClick = { imageUri = null },
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(8.dp)
+                                    .background(Color.Black.copy(alpha = 0.5f), shape = CircleShape)
+                                    .size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Remove Photo",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                         }
                     } else {
                         Column(
@@ -412,6 +440,7 @@ fun LendItemScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .navigationBarsPadding()
                         .padding(20.dp)
                 ) {
                     CampusButton(

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -19,6 +20,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -46,6 +48,7 @@ import com.example.campus_exchange_final.core.ui.CampusButton
 import com.example.campus_exchange_final.core.ui.CampusTextField
 import com.example.campus_exchange_final.core.ui.CampusTopBar
 import com.example.campus_exchange_final.feature.home.ItemListing
+import com.example.campus_exchange_final.feature.home.formatItemDisplayPrice
 import com.example.campus_exchange_final.feature.profile.UserProfile
 import com.example.campus_exchange_final.ui.theme.AppBackground
 import com.example.campus_exchange_final.ui.theme.BrandPurple
@@ -75,14 +78,19 @@ fun ItemDetailsScreen(
     onChatWithOwnerClick: () -> Unit,
     onOpenChatWithUser: (String, String) -> Unit = { _, _ -> },
     onBackClick: () -> Unit,
-    modifier: Modifier = Modifier
+    onDeleteSuccess: () -> Unit = onBackClick,
+    modifier: Modifier = Modifier,
+    borrowViewModel: BorrowViewModel = remember { BorrowViewModel() }
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var ownerName by remember { mutableStateOf("Loading owner...") }
     var ownerCourse by remember { mutableStateOf("Student") }
     var isOwner by remember { mutableStateOf(false) }
     var incomingRequests by remember { mutableStateOf<List<EnrichedBorrowRequest>>(emptyList()) }
     var userActiveRequest by remember { mutableStateOf<BorrowRequestEntity?>(null) }
     var isItemUnavailable by remember { mutableStateOf(false) }
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var deleteErrorMessage by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(item.id, item.userId) {
         val currentUserId = try {
@@ -134,7 +142,8 @@ fun ItemDetailsScreen(
                         .decodeList<BorrowRequestEntity>()
                 }
                 userActiveRequest = reqs.firstOrNull { it.requesterId == currentUserId && (it.status == "Pending" || it.status == "Accepted") }
-                isItemUnavailable = reqs.any { it.status == "Accepted" && it.requesterId != currentUserId }
+                val otherActiveRequest = reqs.firstOrNull { it.requesterId != currentUserId && (it.status == "Pending" || it.status == "Accepted") }
+                isItemUnavailable = otherActiveRequest != null
             } catch (_: Exception) {
                 userActiveRequest = null
                 isItemUnavailable = false
@@ -234,6 +243,23 @@ fun ItemDetailsScreen(
                     )
                 }
 
+                if (isOwner) {
+                    IconButton(
+                        onClick = { showDeleteConfirmDialog = true },
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .statusBarsPadding()
+                            .padding(end = 16.dp, top = 8.dp)
+                            .background(Color.White.copy(alpha = 0.85f), shape = CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = androidx.compose.material.icons.Icons.Default.Delete,
+                            contentDescription = "Delete Item",
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+
                 if (item.imageUrl.isNotBlank()) {
                     AsyncImage(
                         model = item.imageUrl,
@@ -254,7 +280,10 @@ fun ItemDetailsScreen(
             }
 
             Column(
-                modifier = Modifier.padding(20.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(20.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -271,7 +300,7 @@ fun ItemDetailsScreen(
                     )
 
                     Text(
-                        text = item.price,
+                        text = formatItemDisplayPrice(item),
                         style = MaterialTheme.typography.headlineMedium.copy(
                             fontSize = 22.sp,
                             fontWeight = FontWeight.Bold,
@@ -381,6 +410,26 @@ fun ItemDetailsScreen(
                             text = "Location: ${item.location}",
                             style = MaterialTheme.typography.labelLarge.copy(
                                 color = TealFound,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        )
+                    }
+                }
+
+                val rentalDuration = item.duration.substringBefore(" •").trim()
+                if (rentalDuration.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFFFFF3E0))
+                            .padding(horizontal = 14.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            text = "Rental Duration: $rentalDuration",
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                color = Color(0xFFE65100),
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold
                             )
@@ -530,6 +579,36 @@ fun ItemDetailsScreen(
                             }
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    androidx.compose.material3.OutlinedButton(
+                        onClick = { showDeleteConfirmDialog = true },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp),
+                        shape = RoundedCornerShape(25.dp),
+                        colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.error)
+                    ) {
+                        Icon(
+                            imageVector = androidx.compose.material.icons.Icons.Default.Delete,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Delete This Listed Item",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        )
+                    }
                 } else {
                     if (userActiveRequest != null) {
                         Card(
@@ -575,7 +654,7 @@ fun ItemDetailsScreen(
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = "This item has already been borrowed by another student.",
+                                    text = "This item already has an active borrow request.",
                                     style = MaterialTheme.typography.bodySmall.copy(color = TextSecondary)
                                 )
                             }
@@ -611,6 +690,87 @@ fun ItemDetailsScreen(
                 }
             }
         }
+
+        if (showDeleteConfirmDialog) {
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = {
+                    if (!borrowViewModel.isLoading) {
+                        showDeleteConfirmDialog = false
+                        deleteErrorMessage = null
+                    }
+                },
+                title = {
+                    Text(
+                        text = "Delete Item Listing",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                    )
+                },
+                text = {
+                    Column {
+                        Text(
+                            text = "Are you sure you want to delete this item? This action will permanently remove it from Campus Exchange.",
+                            style = MaterialTheme.typography.bodyMedium.copy(color = TextSecondary)
+                        )
+                        if (deleteErrorMessage != null) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text(
+                                text = deleteErrorMessage!!,
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = MaterialTheme.colorScheme.error,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    androidx.compose.material3.Button(
+                        onClick = {
+                            deleteErrorMessage = null
+                            borrowViewModel.deleteItem(
+                                itemId = item.id,
+                                imageUrl = item.imageUrl,
+                                onSuccess = {
+                                    showDeleteConfirmDialog = false
+                                    android.widget.Toast.makeText(context, "Item deleted successfully.", android.widget.Toast.LENGTH_SHORT).show()
+                                    onDeleteSuccess()
+                                },
+                                onError = { msg ->
+                                    deleteErrorMessage = msg
+                                }
+                            )
+                        },
+                        colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error
+                        ),
+                        enabled = !borrowViewModel.isLoading
+                    ) {
+                        if (borrowViewModel.isLoading) {
+                            androidx.compose.material3.CircularProgressIndicator(
+                                color = Color.White,
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Deleting...")
+                        } else {
+                            Text("Delete")
+                        }
+                    }
+                },
+                dismissButton = {
+                    androidx.compose.material3.TextButton(
+                        onClick = {
+                            showDeleteConfirmDialog = false
+                            deleteErrorMessage = null
+                        },
+                        enabled = !borrowViewModel.isLoading
+                    ) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
     }
 }
 
@@ -635,6 +795,7 @@ fun RequestToBorrowScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .navigationBarsPadding()
                 .padding(20.dp)
                 .verticalScroll(rememberScrollState())
         ) {
@@ -689,7 +850,7 @@ fun RequestToBorrowScreen(
                             )
                         )
                         Text(
-                            text = item.price,
+                            text = formatItemDisplayPrice(item),
                             style = MaterialTheme.typography.bodyMedium.copy(
                                 fontWeight = FontWeight.Bold,
                                 color = BrandPurple,

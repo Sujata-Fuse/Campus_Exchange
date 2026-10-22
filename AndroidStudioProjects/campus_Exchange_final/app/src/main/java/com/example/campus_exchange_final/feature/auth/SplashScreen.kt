@@ -157,7 +157,7 @@ fun BackgroundLogoWatermark(
 }
 
 @Composable
-private fun MortarboardCapIcon(
+fun MortarboardCapIcon(
     modifier: Modifier = Modifier,
     color: Color = Color.White
 ) {

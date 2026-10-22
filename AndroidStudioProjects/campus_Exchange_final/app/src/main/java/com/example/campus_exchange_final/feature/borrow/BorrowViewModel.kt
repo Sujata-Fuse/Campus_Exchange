@@ -63,13 +63,29 @@ class BorrowViewModel : ViewModel() {
     var successMessage by mutableStateOf<String?>(null)
         private set
 
-    suspend fun uploadItemImage(context: Context, imageUri: Uri, userId: String): String {
-        val inputStream = context.contentResolver.openInputStream(imageUri)
+    suspend fun uploadItemImage(context: Context, imageUri: Uri, userId: String): String = withContext(Dispatchers.IO) {
+        val bytes = context.contentResolver.openInputStream(imageUri)?.use { it.readBytes() }
             ?: throw IllegalArgumentException("Cannot open image input stream.")
-        val bytes = inputStream.use { it.readBytes() }
-        val extension = when (context.contentResolver.getType(imageUri)) {
+
+        if (bytes.isEmpty()) {
+            throw IllegalArgumentException("Selected image file is empty.")
+        }
+
+        // 15MB size limit safety check
+        if (bytes.size > 15 * 1024 * 1024) {
+            throw IllegalArgumentException("Selected image is too large (maximum size is 15MB).")
+        }
+
+        val mimeType = try {
+            context.contentResolver.getType(imageUri)
+        } catch (_: Exception) {
+            null
+        }
+
+        val extension = when (mimeType?.lowercase()) {
             "image/png" -> "png"
             "image/webp" -> "webp"
+            "image/gif" -> "gif"
             else -> "jpg"
         }
         val filename = "${UUID.randomUUID()}.$extension"
@@ -78,7 +94,7 @@ class BorrowViewModel : ViewModel() {
         bucket.upload(storagePath, bytes) {
             upsert = false
         }
-        return bucket.publicUrl(storagePath)
+        bucket.publicUrl(storagePath)
     }
 
     fun listItem(
@@ -223,10 +239,8 @@ class BorrowViewModel : ViewModel() {
                     withContext(Dispatchers.Main) {
                         if (activeRequest.requesterId == requesterId) {
                             errorMessage = "You already have a pending or accepted request for this item."
-                        } else if (activeRequest.status == "Accepted") {
-                            errorMessage = "This item is currently borrowed and unavailable."
                         } else {
-                            errorMessage = "A borrow request is already pending for this item."
+                            errorMessage = "This item already has an active borrow request."
                         }
                         isLoading = false
                     }
@@ -247,8 +261,16 @@ class BorrowViewModel : ViewModel() {
                 }
             } catch (t: Throwable) {
                 t.printStackTrace()
+                val messageText = t.localizedMessage ?: ""
                 withContext(Dispatchers.Main) {
-                    errorMessage = "Error: ${t.localizedMessage ?: t.javaClass.simpleName}"
+                    if (messageText.contains("duplicate", ignoreCase = true) ||
+                        messageText.contains("unique", ignoreCase = true) ||
+                        messageText.contains("23505")
+                    ) {
+                        errorMessage = "This item already has an active borrow request."
+                    } else {
+                        errorMessage = "Error: ${t.localizedMessage ?: t.javaClass.simpleName}"
+                    }
                 }
             } finally {
                 withContext(Dispatchers.Main) {
@@ -257,4 +279,90 @@ class BorrowViewModel : ViewModel() {
             }
         }
     }
+
+    fun deleteItem(
+        itemId: String,
+        imageUrl: String,
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            withContext(Dispatchers.Main) {
+                isLoading = true
+                errorMessage = null
+            }
+            try {
+                val currentUserId = SupabaseProvider.client.auth.currentUserOrNull()?.id
+                if (currentUserId.isNullOrBlank()) {
+                    withContext(Dispatchers.Main) {
+                        isLoading = false
+                        onError("User not authenticated.")
+                    }
+                    return@launch
+                }
+
+                // Check for Pending or Accepted borrow requests before deletion
+                val activeRequests = try {
+                    SupabaseProvider.client.from("borrow_requests")
+                        .select(Columns.list("*")) {
+                            filter {
+                                eq("item_id", itemId)
+                            }
+                        }
+                        .decodeList<BorrowRequestEntity>()
+                        .filter { it.status == "Pending" || it.status == "Accepted" }
+                } catch (_: Exception) {
+                    emptyList()
+                }
+
+                if (activeRequests.isNotEmpty()) {
+                    val hasAccepted = activeRequests.any { it.status == "Accepted" }
+                    val msg = if (hasAccepted) {
+                        "Cannot delete item: It has an accepted/ongoing borrow request. Please complete the return first."
+                    } else {
+                        "Cannot delete item: There is a pending borrow request on this item. Please accept or reject it first."
+                    }
+                    withContext(Dispatchers.Main) {
+                        isLoading = false
+                        onError(msg)
+                    }
+                    return@launch
+                }
+
+                // Delete item row from Supabase items table (RLS enforces auth.uid() = user_id)
+                SupabaseProvider.client.from("items").delete {
+                    filter {
+                        eq("id", itemId)
+                        eq("user_id", currentUserId)
+                    }
+                }
+
+                // Clean up item image from Supabase Storage bucket if applicable
+                if (imageUrl.isNotBlank() && imageUrl.contains("campus-images")) {
+                    try {
+                        val path = imageUrl.substringAfter("campus-images/").substringBefore("?")
+                        if (path.startsWith(currentUserId)) {
+                            SupabaseProvider.client.storage.from("campus-images").delete(listOf(path))
+                        }
+                    } catch (storageEx: Throwable) {
+                        // Storage cleanup failure does not fail the item deletion
+                        storageEx.printStackTrace()
+                    }
+                }
+
+                withContext(Dispatchers.Main) {
+                    isLoading = false
+                    onSuccess()
+                }
+            } catch (t: Throwable) {
+                t.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    isLoading = false
+                    val errorMsg = t.localizedMessage ?: "Failed to delete item."
+                    onError(errorMsg)
+                }
+            }
+        }
+    }
 }
+

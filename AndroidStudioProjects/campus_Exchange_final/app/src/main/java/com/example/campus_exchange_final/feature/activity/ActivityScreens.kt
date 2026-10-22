@@ -18,11 +18,15 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -42,6 +46,10 @@ import com.example.campus_exchange_final.core.ui.NavTab
 import com.example.campus_exchange_final.feature.auth.BackgroundLogoWatermark
 import com.example.campus_exchange_final.ui.theme.AppBackground
 import com.example.campus_exchange_final.ui.theme.BrandPurple
+import com.example.campus_exchange_final.ui.theme.CoralLost
+import com.example.campus_exchange_final.ui.theme.CoralSurface
+import com.example.campus_exchange_final.ui.theme.LightBlue
+import com.example.campus_exchange_final.ui.theme.LightBlueSurface
 import com.example.campus_exchange_final.ui.theme.PurpleSurface
 import com.example.campus_exchange_final.ui.theme.TealFound
 import com.example.campus_exchange_final.ui.theme.TealSurface
@@ -90,8 +98,8 @@ fun ActivityScreen(
 
                 val displayActivities = activityViewModel.activities
                 val borrowCount = displayActivities.count { it.type == "borrow" }
-                val lostFoundCount = displayActivities.count { it.type == "lost_found" }
-                val notifCount = displayActivities.count { it.type == "notification" || it.status == "Pending" }
+                val matchesCount = displayActivities.count { it.type == "lost_found" || it.type == "lost_report" || it.type == "found_report" }
+                val alertsCount = displayActivities.count { it.type == "item_listed" || it.type == "notification" || it.status == "Pending" }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -101,8 +109,8 @@ fun ActivityScreen(
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     MetricCard(borrowCount.toString(), "Requests", PurpleSurface, BrandPurple, Modifier.weight(1f))
-                    MetricCard(lostFoundCount.toString(), "Matches", TealSurface, TealFound, Modifier.weight(1f))
-                    MetricCard(notifCount.toString(), "Alerts", PurpleSurface, BrandPurple, Modifier.weight(1f))
+                    MetricCard(matchesCount.toString(), "Matches", TealSurface, TealFound, Modifier.weight(1f))
+                    MetricCard(alertsCount.toString(), "Alerts", PurpleSurface, BrandPurple, Modifier.weight(1f))
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
@@ -118,7 +126,34 @@ fun ActivityScreen(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                if (displayActivities.isEmpty()) {
+                if (activityViewModel.isLoading && displayActivities.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = BrandPurple)
+                    }
+                } else if (activityViewModel.errorMessage != null && displayActivities.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = activityViewModel.errorMessage ?: "Failed to load activities",
+                                style = MaterialTheme.typography.bodyMedium.copy(color = CoralLost)
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            OutlinedButton(onClick = { activityViewModel.fetchActivities() }) {
+                                Text("Retry")
+                            }
+                        }
+                    }
+                } else if (displayActivities.isEmpty()) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -126,8 +161,11 @@ fun ActivityScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "No recent activity",
-                            style = MaterialTheme.typography.bodyLarge.copy(color = TextSecondary)
+                            text = "No recent activity found.\nItems you lend, requests you send or receive, and reports will appear here.",
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                color = TextSecondary,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
                         )
                     }
                 } else {
@@ -135,6 +173,41 @@ fun ActivityScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         items(displayActivities) { item ->
+                            val iconBg = when (item.type) {
+                                "borrow" -> if (item.canAcceptReject) PurpleSurface else LightBlueSurface
+                                "item_listed" -> PurpleSurface
+                                "lost_report" -> CoralSurface
+                                "found_report", "lost_found" -> TealSurface
+                                else -> PurpleSurface
+                            }
+                            val iconTint = when (item.type) {
+                                "borrow" -> if (item.canAcceptReject) BrandPurple else LightBlue
+                                "item_listed" -> BrandPurple
+                                "lost_report" -> CoralLost
+                                "found_report", "lost_found" -> TealFound
+                                else -> BrandPurple
+                            }
+                            val cardIcon = when (item.type) {
+                                "item_listed" -> Icons.Default.AddCircle
+                                "borrow" -> Icons.Default.ShoppingBag
+                                "lost_report" -> Icons.Default.Search
+                                "found_report", "lost_found" -> Icons.Default.CheckCircle
+                                else -> Icons.Default.Notifications
+                            }
+
+                            val statusBg = when (item.status.lowercase()) {
+                                "accepted", "active" -> TealSurface
+                                "pending" -> PurpleSurface
+                                "rejected", "cancelled" -> CoralSurface
+                                else -> PurpleSurface
+                            }
+                            val statusColor = when (item.status.lowercase()) {
+                                "accepted", "active" -> TealFound
+                                "pending" -> BrandPurple
+                                "rejected", "cancelled" -> CoralLost
+                                else -> TextSecondary
+                            }
+
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -150,13 +223,13 @@ fun ActivityScreen(
                                             modifier = Modifier
                                                 .size(42.dp)
                                                 .clip(CircleShape)
-                                                .background(TealSurface),
+                                                .background(iconBg),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Icon(
-                                                imageVector = Icons.Default.CheckCircle,
+                                                imageVector = cardIcon,
                                                 contentDescription = null,
-                                                tint = TealFound,
+                                                tint = iconTint,
                                                 modifier = Modifier.size(22.dp)
                                             )
                                         }
@@ -182,13 +255,34 @@ fun ActivityScreen(
                                             )
                                         }
 
-                                        Text(
-                                            text = item.timeAgo,
-                                            style = MaterialTheme.typography.bodySmall.copy(
-                                                color = TextSecondary,
-                                                fontSize = 11.sp
+                                        Spacer(modifier = Modifier.width(8.dp))
+
+                                        Column(horizontalAlignment = Alignment.End) {
+                                            // Status badge
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .background(statusBg)
+                                                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                                            ) {
+                                                Text(
+                                                    text = item.status,
+                                                    style = MaterialTheme.typography.bodySmall.copy(
+                                                        color = statusColor,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        fontSize = 10.sp
+                                                    )
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = item.timeAgo,
+                                                style = MaterialTheme.typography.bodySmall.copy(
+                                                    color = TextSecondary,
+                                                    fontSize = 10.sp
+                                                )
                                             )
-                                        )
+                                        }
                                     }
 
                                     if (item.canAcceptReject && item.requestId.isNotBlank()) {

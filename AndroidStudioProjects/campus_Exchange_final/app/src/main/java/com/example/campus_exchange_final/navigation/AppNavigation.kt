@@ -328,7 +328,8 @@ fun CampusExchangeApp(modifier: Modifier = Modifier) {
                             }
                         }
                     },
-                    onBackClick = { popBackStack() }
+                    onBackClick = { popBackStack() },
+                    onDeleteSuccess = { popBackStack() }
                 )
             }
         }

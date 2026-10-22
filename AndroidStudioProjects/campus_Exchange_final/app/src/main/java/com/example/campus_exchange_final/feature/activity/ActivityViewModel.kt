@@ -64,6 +64,7 @@ class ActivityViewModel : ViewModel() {
             try {
                 val userId = SupabaseProvider.client.auth.currentUserOrNull()?.id
                 if (userId != null) {
+                    // 1. Notifications
                     val notifs = try {
                         SupabaseProvider.client.from("notifications")
                             .select(Columns.list("*")) {
@@ -74,10 +75,10 @@ class ActivityViewModel : ViewModel() {
                             }
                             .decodeList<NotificationEntity>()
                     } catch (e: Exception) {
-                        e.printStackTrace()
                         emptyList()
                     }
 
+                    // 2. Borrow Requests (outgoing & incoming)
                     val borrowReqs = try {
                         SupabaseProvider.client.from("borrow_requests")
                             .select(Columns.list("*")) {
@@ -94,6 +95,35 @@ class ActivityViewModel : ViewModel() {
                         emptyList()
                     }
 
+                    // 3. User's Listed Items (from Lend Item)
+                    val listedItems = try {
+                        SupabaseProvider.client.from("items")
+                            .select(Columns.list("*")) {
+                                filter {
+                                    eq("user_id", userId)
+                                }
+                                order("created_at", io.github.jan.supabase.postgrest.query.Order.DESCENDING)
+                            }
+                            .decodeList<com.example.campus_exchange_final.feature.home.ItemListing>()
+                    } catch (e: Exception) {
+                        emptyList()
+                    }
+
+                    // 4. User's Submitted Lost & Found Reports
+                    val lostFoundReports = try {
+                        SupabaseProvider.client.from("lost_found_reports")
+                            .select(Columns.list("*")) {
+                                filter {
+                                    eq("user_id", userId)
+                                }
+                                order("created_at", io.github.jan.supabase.postgrest.query.Order.DESCENDING)
+                            }
+                            .decodeList<com.example.campus_exchange_final.feature.lostfound.LostFoundItem>()
+                    } catch (e: Exception) {
+                        emptyList()
+                    }
+
+                    // 5. Found Requests / Claims (incoming & outgoing)
                     val foundReqs = try {
                         SupabaseProvider.client.from("found_requests")
                             .select(Columns.list("*")) {
@@ -110,13 +140,29 @@ class ActivityViewModel : ViewModel() {
                         emptyList()
                     }
 
+                    fun formatIsoTimestamp(rawTimestamp: String?): String {
+                        if (rawTimestamp.isNullOrBlank()) return "Recent"
+                        return try {
+                            val clean = rawTimestamp.substringBefore(".").substringBefore("+").substringBefore("Z")
+                            if (clean.contains("T")) {
+                                val parts = clean.split("T")
+                                val datePart = parts[0]
+                                val timePart = parts.getOrNull(1)?.take(5) ?: ""
+                                if (timePart.isNotBlank()) "$datePart $timePart" else datePart
+                            } else {
+                                clean.take(16)
+                            }
+                        } catch (_: Exception) {
+                            rawTimestamp.take(16).replace("T", " ")
+                        }
+                    }
+
                     val notificationItems = notifs.map { notif ->
-                        val formattedTime = notif.createdAt.take(16).replace("T", " ").ifBlank { "Recent" }
                         ActivityItem(
                             id = notif.id,
                             title = notif.title,
                             subtitle = notif.message,
-                            timeAgo = formattedTime,
+                            timeAgo = formatIsoTimestamp(notif.createdAt),
                             type = "notification",
                             status = if (notif.isRead) "Read" else "Unread",
                             requestId = "",
@@ -148,22 +194,22 @@ class ActivityViewModel : ViewModel() {
 
                         val otherName = otherProfile?.full_name ?: if (isOwner) "Requester" else "Owner"
                         val displayTitle = if (isOwner) {
-                            "Borrow Request: ${itemTitle ?: "Item"}"
+                            "Incoming Borrow: ${itemTitle ?: "Item"}"
                         } else {
-                            "Request to ${otherName}: ${itemTitle ?: "Item"}"
+                            "Borrow Request: ${itemTitle ?: "Item"}"
                         }
 
                         val displaySubtitle = if (isOwner) {
                             "From $otherName • Status: ${req.status}"
                         } else {
-                            "Status: ${req.status} • Duration: ${req.duration}"
+                            "To $otherName • Status: ${req.status} • Duration: ${req.duration}"
                         }
 
                         ActivityItem(
                             id = req.id.ifBlank { "borrow_$index" },
                             title = displayTitle,
                             subtitle = if (req.message.isNotBlank()) "${req.message} ($displaySubtitle)" else displaySubtitle,
-                            timeAgo = req.duration,
+                            timeAgo = formatIsoTimestamp(req.createdAt),
                             type = "borrow",
                             status = req.status,
                             requestId = req.id,
@@ -171,6 +217,39 @@ class ActivityViewModel : ViewModel() {
                             itemId = req.itemId,
                             ownerId = req.ownerId,
                             requesterId = req.requesterId
+                        )
+                    }
+
+                    val listedActivityItems = listedItems.mapIndexed { index, item ->
+                        ActivityItem(
+                            id = item.id.ifBlank { "listed_$index" },
+                            title = "Listed: ${item.title}",
+                            subtitle = "Lending Type: ${item.lendingType} • Price: ${item.price} • ${item.location}",
+                            timeAgo = "Listed Item",
+                            type = "item_listed",
+                            status = "Active",
+                            requestId = "",
+                            canAcceptReject = false,
+                            itemId = item.id,
+                            ownerId = item.userId,
+                            requesterId = ""
+                        )
+                    }
+
+                    val lostFoundReportItems = lostFoundReports.mapIndexed { index, report ->
+                        val reportTypeLabel = if (report.isLost) "Reported Lost" else "Reported Found"
+                        ActivityItem(
+                            id = report.id.ifBlank { "lf_report_$index" },
+                            title = "$reportTypeLabel: ${report.title}",
+                            subtitle = "Category: ${report.category} • Location: ${report.location} • Status: ${report.status}",
+                            timeAgo = if (report.isLost) "Lost Item" else "Found Item",
+                            type = if (report.isLost) "lost_report" else "found_report",
+                            status = report.status,
+                            requestId = "",
+                            canAcceptReject = false,
+                            itemId = report.id,
+                            ownerId = report.userId,
+                            requesterId = ""
                         )
                     }
 
@@ -185,8 +264,21 @@ class ActivityViewModel : ViewModel() {
                                 .decodeSingleOrNull<com.example.campus_exchange_final.feature.profile.UserProfile>()
                         } catch (_: Exception) { null }
 
+                        val reportTitle = try {
+                            val r = SupabaseProvider.client.from("lost_found_reports")
+                                .select(Columns.list("*")) {
+                                    filter { eq("id", req.reportId) }
+                                }
+                                .decodeSingleOrNull<com.example.campus_exchange_final.feature.lostfound.LostFoundItem>()
+                            r?.title
+                        } catch (_: Exception) { null }
+
                         val otherName = otherProfile?.full_name ?: if (isOwner) "Finder" else "Owner"
-                        val displayTitle = if (isOwner) "Found Alert from $otherName" else "Found Claim sent to $otherName"
+                        val displayTitle = if (isOwner) {
+                            "Found Claim from $otherName: ${reportTitle ?: "Item"}"
+                        } else {
+                            "Claim Submitted to $otherName: ${reportTitle ?: "Item"}"
+                        }
                         val displaySubtitle = "Status: ${req.status}" + if (req.message.isNotBlank()) " • \"${req.message}\"" else ""
 
                         ActivityItem(
@@ -204,8 +296,12 @@ class ActivityViewModel : ViewModel() {
                         )
                     }
 
+                    // Combine and deduplicate
+                    val combined = (notificationItems + borrowItems + listedActivityItems + lostFoundReportItems + foundItems)
+                        .distinctBy { it.id }
+
                     withContext(Dispatchers.Main) {
-                        activities = notificationItems + borrowItems + foundItems
+                        activities = combined
                     }
                 } else {
                     withContext(Dispatchers.Main) {

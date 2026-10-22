@@ -84,6 +84,31 @@ data class ItemListing(
     val condition: String = "Good"
 )
 
+fun formatItemDisplayPrice(item: ItemListing): String {
+    val isFree = item.lendingType.equals("Free", ignoreCase = true) || item.price.equals("Free", ignoreCase = true)
+    if (isFree) return "Free"
+
+    val basePrice = if (item.price.startsWith("₹")) item.price else "₹${item.price}"
+    val isRent = item.lendingType.contains("Rent", ignoreCase = true)
+    if (isRent) {
+        val rentalDuration = item.duration.substringBefore(" •").trim()
+        return if (rentalDuration.isNotBlank()) {
+            val normalizedUnit = when (rentalDuration.lowercase()) {
+                "1 day", "day" -> "day"
+                "3 days" -> "3 days"
+                "1 week", "week" -> "week"
+                "2 weeks" -> "2 weeks"
+                "1 month", "month" -> "month"
+                else -> rentalDuration
+            }
+            "$basePrice / $normalizedUnit"
+        } else {
+            basePrice
+        }
+    }
+    return basePrice
+}
+
 val categories = listOf("All", "Books", "Electronics", "Fashion", "Furniture", "Notes", "Sports")
 
 // Screen 9: Home Dashboard
@@ -567,7 +592,7 @@ fun ItemCard(
             Spacer(modifier = Modifier.height(4.dp))
 
             Text(
-                text = item.price,
+                text = formatItemDisplayPrice(item),
                 style = MaterialTheme.typography.labelLarge.copy(
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp,

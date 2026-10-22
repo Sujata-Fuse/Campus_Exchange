@@ -87,20 +87,40 @@ fun LoginScreen(
         ) {
             Spacer(modifier = Modifier.height(40.dp))
 
-            // Logo Box Header
+            // Campus Exchange Branding Header
             Box(
                 modifier = Modifier
-                    .size(68.dp)
-                    .clip(RoundedCornerShape(20.dp))
+                    .size(72.dp)
+                    .clip(RoundedCornerShape(22.dp))
                     .background(BrandPurple),
                 contentAlignment = Alignment.Center
             ) {
+                MortarboardCapIcon(
+                    modifier = Modifier.size(42.dp),
+                    color = Color.White
+                )
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
                 Text(
-                    text = "CE",
+                    text = "Campus ",
                     style = MaterialTheme.typography.titleLarge.copy(
-                        color = Color.White,
+                        color = TextPrimary,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 24.sp
+                        fontSize = 22.sp
+                    )
+                )
+                Text(
+                    text = "Exchange",
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        color = BrandPurple,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 22.sp
                     )
                 )
             }
